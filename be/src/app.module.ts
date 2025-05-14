@@ -1,3 +1,4 @@
+// be/src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -20,6 +21,7 @@ import gamesConfig from './config/games.config';
 import securityConfig from './config/security.config';
 
 // Modules
+import { SharedModule } from './shared/shared.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
 import { RoomModule } from './modules/room/room.module';
@@ -79,6 +81,9 @@ import { NotificationModule } from './modules/notification/notification.module';
       rootPath: join(__dirname, '..', 'public'),
       serveRoot: '/static',
     }),
+
+    // Shared module
+    SharedModule,
 
     // Feature modules
     AuthModule,

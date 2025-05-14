@@ -1,3 +1,4 @@
+// be/src/module/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -6,6 +7,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { UserModule } from '../user/user.module';
+import { SharedModule } from '../../shared/shared.module';
 
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
@@ -29,6 +31,7 @@ import { LocalStrategy } from './strategies/local.strategy';
     }),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     UserModule,
+    SharedModule,
   ],
   controllers: [AuthController],
   providers: [
