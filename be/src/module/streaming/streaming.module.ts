@@ -1,4 +1,3 @@
-// modules/streaming/streaming.module.ts
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
@@ -9,8 +8,7 @@ import { StreamingService } from './services/streaming.service';
 import { RtmpServerService } from './services/rtmp-server.service';
 import { Stream, StreamSchema } from './schemas/stream.schema';
 import { AuthModule } from '../auth/auth.module';
-import { UserModule } from '../user/user.module';
-
+import { StreamingGateway } from './gateways/streaming.gateway';
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Stream.name, schema: StreamSchema }]),
@@ -20,7 +18,6 @@ import { UserModule } from '../user/user.module';
     ScheduleModule.forRoot(),
   ],
   controllers: [StreamingController],
-  providers: [StreamingService, RtmpServerService],
+  providers: [StreamingService, RtmpServerService,StreamingGateway],
   exports: [StreamingService],
 })
-export class StreamingModule {}
