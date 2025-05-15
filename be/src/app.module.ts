@@ -15,14 +15,14 @@ import storageConfig from './config/storage.config';
 import mediaConfig from './config/media.config';
 import streamingConfig from './config/streaming.config';
 import paymentsConfig from './config/payments.config';
-import contentConfig from './config/content.config';
 import notificationsConfig from './config/notifications.config';
 import gamesConfig from './config/games.config';
 import securityConfig from './config/security.config';
+import contentConfig from './config/content.config';
 
 // Modules
 import { SharedModule } from './shared/shared.module';
-import { AuthModule } from './modules/auth/auth.module';
+import { AuthModule } from './module/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
 import { RoomModule } from './modules/room/room.module';
 import { PostModule } from './modules/post/post.module';

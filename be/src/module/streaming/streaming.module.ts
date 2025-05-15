@@ -1,25 +1,26 @@
+// modules/streaming/streaming.module.ts
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-
-import { Room, RoomSchema } from '../room/schemas/room.schema';
-import { User, UserSchema } from '../user/schemas/user.schema';
+import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { StreamingController } from './controllers/streaming.controller';
 import { StreamingService } from './services/streaming.service';
-import { MediaServerService } from './services/media-server.service';
-import { StreamingGateway } from './gateways/streaming.gateway';
+import { RtmpServerService } from './services/rtmp-server.service';
+import { Stream, StreamSchema } from './schemas/stream.schema';
+import { AuthModule } from '../auth/auth.module';
+import { UserModule } from '../user/user.module';
 
 @Module({
   imports: [
+    MongooseModule.forFeature([{ name: Stream.name, schema: StreamSchema }]),
     ConfigModule,
-    MongooseModule.forFeature([
-      { name: Room.name, schema: RoomSchema },
-      { name: User.name, schema: UserSchema },
-    ]),
+    AuthModule,
+    UserModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [StreamingController],
-  providers: [StreamingService, MediaServerService, StreamingGateway],
-  exports: [StreamingService, MediaServerService],
+  providers: [StreamingService, RtmpServerService],
+  exports: [StreamingService],
 })
 export class StreamingModule {}
