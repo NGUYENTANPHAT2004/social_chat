@@ -2,12 +2,12 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { WinstonModule } from 'nestjs-winston';
+import { WinstonModule } from 'nest-winston';
 import { format, transports } from 'winston';
 import * as compression from 'compression';
 import * as helmet from 'helmet';
 import { AppModule } from './app.module';
-import { MediaServerService } from './modules/streaming/services/media-server.service';
+import { MediaServerService } from './module/streaming/services/media-server.service';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
