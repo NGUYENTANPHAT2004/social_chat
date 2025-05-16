@@ -1,3 +1,4 @@
+"use client";
 import React, { useState } from 'react';
 import { MessageCircle, Video, Phone, Gift, Image, Heart, Star, Music, Users, Settings, Search, Send, Mic, Paperclip, Camera, Play, User, Zap, DollarSign, Coffee, Moon } from 'lucide-react';
 
