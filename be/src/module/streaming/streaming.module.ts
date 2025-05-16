@@ -3,11 +3,12 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 
-import { StreamingController } from './controllers/streaming.controller';
+import { StreamingController } from './controller/streaming.controller';
 import { StreamingService } from './services/streaming.service';
 import { RtmpServerService } from './services/rtmp-server.service';
 import { Stream, StreamSchema } from './schemas/stream.schema';
 import { AuthModule } from '../auth/auth.module';
+import { UserModule } from '../user/user.module';
 import { StreamingGateway } from './gateways/streaming.gateway';
 @Module({
   imports: [

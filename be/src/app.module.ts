@@ -31,9 +31,9 @@ import { GiftModule } from './modules/gift/gift.module';
 import { GameModule } from './modules/game/game.module';
 import { MessageModule } from './modules/message/message.module';
 import { ReportModule } from './modules/report/report.module';
-import { StreamingModule } from './modules/streaming/streaming.module';
-import { ModerationModule } from './modules/moderation/moderation.module';
-import { NotificationModule } from './modules/notification/notification.module';
+import { StreamingModule } from './module/streaming/streaming.module';
+import { ModerationModule } from './module/moderation/moderation.module';
+import { NotificationModule } from './module/notification/notification.module';
 
 @Module({
   imports: [
