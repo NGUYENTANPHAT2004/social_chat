@@ -22,3 +22,4 @@ import { StreamingGateway } from './gateways/streaming.gateway';
   providers: [StreamingService, RtmpServerService,StreamingGateway],
   exports: [StreamingService],
 })
+export class StreamingModule {}
