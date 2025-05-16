@@ -1,6 +1,68 @@
 // src/types/index.ts
 
 // ======= User related interfaces =======
+export interface ChatItem {
+    id: number;
+    name: string;
+    avatar: string;
+    message: string;
+    time: string;
+    unread: number;
+    online: boolean;
+  }
+  
+  export interface RoomItem {
+    id: number;
+    name: string;
+    members: number;
+    active: boolean;
+    image: string;
+  }
+  
+  export interface MessageItem {
+    id: number;
+    sender: string;
+    text: string;
+    time: string;
+    isMine: boolean;
+  }
+  
+  export interface ReelItem {
+    id: number;
+    user: string;
+    avatar: string;
+    viewed: boolean;
+  }
+  
+  export interface GameItem {
+    id: number;
+    name: string;
+    icon: string;
+    players: number;
+    color: string;
+  }
+  
+  export interface GiftCategory {
+    id: number;
+    name: string;
+    emoji: string;
+  }
+  
+  export interface GiftItem {
+    id: number;
+    name: string;
+    emoji: string;
+    price: number;
+    category: string;
+  }
+  
+  export interface LiveEvent {
+    id: number;
+    title: string;
+    host: string;
+    viewers: number;
+    thumbnail: string;
+  }
 export interface User {
     id: string;
     username: string;
