@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+      - "1935:1935" # RTMP port
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - media_storage:/app/storage
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - mongo
+      - redis
+
+  client:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000/api
+      - REACT_APP_SOCKET_URL=http://localhost:5000
+    depends_on:
+      - api
+
+  mongo:
+    image: mongo:6.0
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=entertainment_platform
+    command: --wiredTigerCacheSizeGB 1.5
+
+  redis:
+    image: redis:7.0-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 500mb --maxmemory-policy allkeys-lru
+
+  nginx:
+    image: nginx:1.23-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - media_storage:/usr/share/nginx/media
+    depends_on:
+      - api
+      - client
+
+volumes:
+  mongo_data:
+  redis_data:
+  media_storage:
