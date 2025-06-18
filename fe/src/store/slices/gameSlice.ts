@@ -1,7 +1,12 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { GameState, Game, GameSession, PlaceBetDto } from '@/types';
+import { GameState, Game, GameSession as BaseGameSession, PlaceBetDto, ApiResponse, PaginatedResponse } from '@/types';
 import { API_ENDPOINTS } from '@/constants';
 import api from '@/services/api';
+
+// Extend GameSession to include newBalance
+interface GameSession extends BaseGameSession {
+  newBalance?: number;
+}
 
 const initialState: GameState = {
   games: [],
@@ -20,8 +25,8 @@ export const fetchGames = createAsyncThunk(
   'game/fetchGames',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.GAMES);
-      return response.data.data.items;
+      const response = await api.get<ApiResponse<PaginatedResponse<Game>>>(API_ENDPOINTS.GAMES);
+      return response.data.data.items || response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch games');
     }
@@ -32,8 +37,8 @@ export const fetchPopularGames = createAsyncThunk(
   'game/fetchPopularGames',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get(`${API_ENDPOINTS.GAMES}?sort=players&limit=5`);
-      return response.data.data.items;
+      const response = await api.get<ApiResponse<PaginatedResponse<Game>>>(`${API_ENDPOINTS.GAMES}?sort=playCount&order=desc&limit=5`);
+      return response.data.data.items || response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch popular games');
     }
@@ -44,7 +49,7 @@ export const fetchGameById = createAsyncThunk(
   'game/fetchGameById',
   async (gameId: string, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.GAME_BY_ID(gameId));
+      const response = await api.get<ApiResponse<Game>>(API_ENDPOINTS.GAME_BY_ID(gameId));
       return response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch game');
@@ -54,10 +59,16 @@ export const fetchGameById = createAsyncThunk(
 
 export const fetchGameHistory = createAsyncThunk(
   'game/fetchGameHistory',
-  async (gameId: string, { rejectWithValue }) => {
+  async (params: { gameId?: string; userId?: string; page?: number; limit?: number } = {}, { rejectWithValue }) => {
     try {
-      const response = await api.get(`${API_ENDPOINTS.GAME_BY_ID(gameId)}/history`);
-      return response.data.data.items;
+      const queryParams = new URLSearchParams();
+      if (params.gameId) queryParams.append('gameId', params.gameId);
+      if (params.userId) queryParams.append('userId', params.userId);
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      
+      const response = await api.get<ApiResponse<PaginatedResponse<GameSession>>>(`/games/history?${queryParams.toString()}`);
+      return response.data.data.items || response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch game history');
     }
@@ -68,10 +79,34 @@ export const placeBet = createAsyncThunk(
   'game/placeBet',
   async ({ gameId, betData }: { gameId: string; betData: PlaceBetDto }, { rejectWithValue }) => {
     try {
-      const response = await api.post(API_ENDPOINTS.PLACE_BET(gameId), betData);
+      const response = await api.post<ApiResponse<GameSession>>(API_ENDPOINTS.PLACE_BET(gameId), betData);
       return response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to place bet');
+    }
+  }
+);
+
+export const playDailySpin = createAsyncThunk(
+  'game/playDailySpin',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.post<ApiResponse<GameSession>>('/games/daily-spin/play');
+      return response.data.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to play daily spin');
+    }
+  }
+);
+
+export const getDailySpinStatus = createAsyncThunk(
+  'game/getDailySpinStatus',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get<ApiResponse<{ canPlay: boolean; nextPlayTime?: string }>>('/games/daily-spin/status');
+      return response.data.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to get daily spin status');
     }
   }
 );
@@ -83,90 +118,51 @@ const gameSlice = createSlice({
     setCurrentGame: (state, action: PayloadAction<Game>) => {
       state.currentGame = action.payload;
     },
-    
     clearCurrentGame: (state) => {
       state.currentGame = null;
       state.currentSession = null;
     },
-    
-    setCurrentSession: (state, action: PayloadAction<GameSession>) => {
-      state.currentSession = action.payload;
-    },
-    
-    clearCurrentSession: (state) => {
-      state.currentSession = null;
-    },
-    
     setCurrentBet: (state, action: PayloadAction<number>) => {
       state.currentBet = action.payload;
     },
-    
-    setBalance: (state, action: PayloadAction<number>) => {
+    updateBalance: (state, action: PayloadAction<number>) => {
       state.balance = action.payload;
     },
-    
-    incrementActivePlayerCount: (state, action: PayloadAction<string>) => {
-      const gameId = action.payload;
-      
-      // Find game in all lists and increment active player count
-      const gameIndex = state.games.findIndex(game => game.id === gameId);
-      if (gameIndex !== -1 && state.games[gameIndex].activePlayers !== undefined) {
-        state.games[gameIndex].activePlayers! += 1;
-      }
-      
-      const popularGameIndex = state.popularGames.findIndex(game => game.id === gameId);
-      if (popularGameIndex !== -1 && state.popularGames[popularGameIndex].activePlayers !== undefined) {
-        state.popularGames[popularGameIndex].activePlayers! += 1;
-      }
-      
-      // Update current game if it's the same
-      if (state.currentGame && state.currentGame.id === gameId && state.currentGame.activePlayers !== undefined) {
-        state.currentGame.activePlayers! += 1;
+    addToHistory: (state, action: PayloadAction<GameSession>) => {
+      state.history.unshift(action.payload);
+      // Keep only last 50 sessions
+      if (state.history.length > 50) {
+        state.history = state.history.slice(0, 50);
       }
     },
-    
-    decrementActivePlayerCount: (state, action: PayloadAction<string>) => {
-      const gameId = action.payload;
-      
-      // Find game in all lists and decrement active player count
-      const gameIndex = state.games.findIndex(game => game.id === gameId);
-      if (gameIndex !== -1 && state.games[gameIndex].activePlayers !== undefined && state.games[gameIndex].activePlayers! > 0) {
-        state.games[gameIndex].activePlayers! -= 1;
-      }
-      
-      const popularGameIndex = state.popularGames.findIndex(game => game.id === gameId);
-      if (popularGameIndex !== -1 && state.popularGames[popularGameIndex].activePlayers !== undefined && state.popularGames[popularGameIndex].activePlayers! > 0) {
-        state.popularGames[popularGameIndex].activePlayers! -= 1;
-      }
-      
-      // Update current game if it's the same
-      if (state.currentGame && state.currentGame.id === gameId && state.currentGame.activePlayers !== undefined && state.currentGame.activePlayers! > 0) {
-        state.currentGame.activePlayers! -= 1;
+    updateGameSession: (state, action: PayloadAction<Partial<GameSession>>) => {
+      if (state.currentSession) {
+        state.currentSession = { ...state.currentSession, ...action.payload };
       }
     },
-    
-    addGameResult: (state, action: PayloadAction<GameSession>) => {
-      const gameSession = action.payload;
-      
-      // Add to history if not already there
-      if (!state.history.some(session => session.id === gameSession.id)) {
-        // Keep only the 10 most recent game sessions
-        if (state.history.length >= 10) {
-          state.history.pop();
-        }
-        
-        state.history.unshift(gameSession);
+    incrementGamePlayCount: (state, action: PayloadAction<string>) => {
+      const gameId = action.payload;
+      const game = state.games.find(g => g.id === gameId);
+      if (game) {
+        game.playCount += 1;
       }
-      
-      // Update current session if it's the same
-      if (state.currentSession && state.currentSession.id === gameSession.id) {
-        state.currentSession = gameSession;
+      if (state.currentGame?.id === gameId) {
+        state.currentGame.playCount += 1;
       }
+    },
+    clearError: (state) => {
+      state.error = null;
+    },
+    resetGameState: (state) => {
+      state.currentGame = null;
+      state.currentSession = null;
+      state.currentBet = 0;
+      state.error = null;
     },
   },
   extraReducers: (builder) => {
     builder
-      // Fetch games cases
+      // Fetch games
       .addCase(fetchGames.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -180,21 +176,12 @@ const gameSlice = createSlice({
         state.error = action.payload as string;
       })
       
-      // Fetch popular games cases
-      .addCase(fetchPopularGames.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Fetch popular games
       .addCase(fetchPopularGames.fulfilled, (state, action) => {
-        state.loading = false;
         state.popularGames = action.payload;
       })
-      .addCase(fetchPopularGames.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
       
-      // Fetch game by id cases
+      // Fetch game by ID
       .addCase(fetchGameById.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -208,65 +195,54 @@ const gameSlice = createSlice({
         state.error = action.payload as string;
       })
       
-      // Fetch game history cases
-      .addCase(fetchGameHistory.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Fetch game history
       .addCase(fetchGameHistory.fulfilled, (state, action) => {
-        state.loading = false;
         state.history = action.payload;
       })
-      .addCase(fetchGameHistory.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
       
-      // Place bet cases
+      // Place bet
       .addCase(placeBet.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(placeBet.fulfilled, (state, action) => {
         state.loading = false;
-        
-        // Update session if returned
-        if (action.payload.sessionId) {
-          // This action might return a full session or just the ID, handle both cases
-          if (typeof action.payload.sessionId === 'string') {
-            // We only have the ID, we'll need to fetch the full session later
-            state.currentSession = state.currentSession;
-          } else {
-            // We have the full session object
-            state.currentSession = action.payload.sessionId as unknown as GameSession;
-          }
-        }
-        
-        // Update balance
-        if (action.payload.newBalance !== undefined) {
-          state.balance = action.payload.newBalance;
-        }
-        
-        // Reset current bet after placing a bet
-        state.currentBet = 0;
+        state.currentSession = action.payload;
+        state.balance = action.payload.newBalance || state.balance;
       })
       .addCase(placeBet.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Daily spin
+      .addCase(playDailySpin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(playDailySpin.fulfilled, (state, action) => {
+        state.loading = false;
+        state.balance = action.payload.newBalance || state.balance;
+        // Add to history
+        state.history.unshift(action.payload);
+      })
+      .addCase(playDailySpin.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });
   },
 });
 
-export const { 
-  setCurrentGame, 
-  clearCurrentGame, 
-  setCurrentSession, 
-  clearCurrentSession, 
-  setCurrentBet, 
-  setBalance,
-  incrementActivePlayerCount,
-  decrementActivePlayerCount,
-  addGameResult
+export const {
+  setCurrentGame,
+  clearCurrentGame,
+  setCurrentBet,
+  updateBalance,
+  addToHistory,
+  updateGameSession,
+  incrementGamePlayCount,
+  clearError,
+  resetGameState,
 } = gameSlice.actions;
 
 export default gameSlice.reducer;

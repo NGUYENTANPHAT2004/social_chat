@@ -4,7 +4,7 @@ import {
     Room,
     Message,
     Game,
-    Gift,
+    GiftItem,
     Transaction,
     ApiResponse,
     PaginatedResponse

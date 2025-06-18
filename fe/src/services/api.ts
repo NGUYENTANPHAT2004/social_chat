@@ -1,7 +1,7 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import { ApiResponse } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 class ApiService {
   private axiosInstance;
@@ -65,13 +65,13 @@ class ApiService {
   }
 
   // Generic API methods
-  async get<T>(url: string): Promise<ApiResponse<T>> {
-    const response = await this.axiosInstance.get(url);
+  async get<T>(url: string, config?: { params?: any }): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.get(url, config);
     return response.data;
   }
 
-  async post<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    const response = await this.axiosInstance.post(url, data);
+  async post<T>(url: string, data?: any, config?: { headers?: any }): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.post(url, data, config);
     return response.data;
   }
 

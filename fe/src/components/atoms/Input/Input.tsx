@@ -12,7 +12,7 @@ const inputVariants = cva(
         error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
         success: 'border-green-500 focus:border-green-500 focus:ring-green-500',
       },
-      size: {
+      inputSize: {
         sm: 'h-8 px-3 text-sm',
         md: 'h-10 px-4 text-sm',
         lg: 'h-12 px-4 text-base',
@@ -20,7 +20,7 @@ const inputVariants = cva(
     },
     defaultVariants: {
       variant: 'default',
-      size: 'md',
+      inputSize: 'md',
     },
   }
 );
@@ -36,7 +36,7 @@ export interface InputProps
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, variant, size, label, error, leftIcon, rightIcon, showPasswordToggle, type, ...props }, ref) => {
+  ({ className, variant, inputSize, label, error, leftIcon, rightIcon, showPasswordToggle, type, ...props }, ref) => {
     const [showPassword, setShowPassword] = React.useState(false);
     const inputType = type === 'password' && showPassword ? 'text' : type;
 
@@ -56,7 +56,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <input
             type={inputType}
             className={clsx(
-              inputVariants({ variant: error ? 'error' : variant, size }),
+              inputVariants({ variant: error ? 'error' : variant, inputSize }),
               leftIcon && 'pl-10',
               (rightIcon || showPasswordToggle) && 'pr-10',
               className

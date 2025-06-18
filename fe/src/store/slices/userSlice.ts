@@ -1,5 +1,6 @@
+// store/slices/userSlice.ts
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { UserState, UserProfile, UserBasic, Transaction, Notification } from '@/types';
+import { UserState, UserProfile, Transaction, Notification, ApiResponse, PaginatedResponse } from '@/types';
 import { API_ENDPOINTS } from '@/constants';
 import api from '@/services/api';
 
@@ -22,7 +23,7 @@ export const fetchUserProfile = createAsyncThunk(
   'user/fetchUserProfile',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.USER_PROFILE);
+      const response = await api.get<ApiResponse<UserProfile>>(API_ENDPOINTS.USER_PROFILE);
       return response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch user profile');
@@ -34,8 +35,8 @@ export const fetchUserById = createAsyncThunk(
   'user/fetchUserById',
   async (userId: string, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.USER_BY_ID(userId));
-      return response.data.data;
+      const response = await api.get<ApiResponse<UserProfile>>(API_ENDPOINTS.USER_BY_ID(userId));
+      return { userId, user: response.data.data };
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch user');
     }
@@ -46,7 +47,7 @@ export const updateUserProfile = createAsyncThunk(
   'user/updateUserProfile',
   async (profileData: Partial<UserProfile>, { rejectWithValue }) => {
     try {
-      const response = await api.patch(API_ENDPOINTS.USER_PROFILE, profileData);
+      const response = await api.patch<ApiResponse<UserProfile>>(API_ENDPOINTS.USER_PROFILE, profileData);
       return response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to update profile');
@@ -61,11 +62,10 @@ export const uploadAvatar = createAsyncThunk(
       const formData = new FormData();
       formData.append('avatar', file);
       
-      const response = await api.post(`${API_ENDPOINTS.USER_PROFILE}/avatar`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await api.post<ApiResponse<{ avatar: string; url: string }>>(
+        `${API_ENDPOINTS.USER_PROFILE}/avatar`,
+        formData
+      );
       
       return response.data.data;
     } catch (error: any) {
@@ -76,94 +76,32 @@ export const uploadAvatar = createAsyncThunk(
 
 export const fetchTransactions = createAsyncThunk(
   'user/fetchTransactions',
-  async (_, { rejectWithValue }) => {
+  async (params: { page?: number; limit?: number; type?: string } = {}, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.USER_TRANSACTIONS);
-      return response.data.data.items;
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.type) queryParams.append('type', params.type);
+      
+      const response = await api.get<ApiResponse<PaginatedResponse<Transaction>>>(`${API_ENDPOINTS.USER_TRANSACTIONS}?${queryParams.toString()}`);
+      return response.data.data.items || response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch transactions');
     }
   }
 );
 
-export const fetchFriends = createAsyncThunk(
-  'user/fetchFriends',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await api.get('/users/friends');
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch friends');
-    }
-  }
-);
-
-export const fetchFriendRequests = createAsyncThunk(
-  'user/fetchFriendRequests',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await api.get('/users/friends/requests');
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch friend requests');
-    }
-  }
-);
-
-export const sendFriendRequest = createAsyncThunk(
-  'user/sendFriendRequest',
-  async (userId: string, { rejectWithValue }) => {
-    try {
-      const response = await api.post(`/users/friends/requests/${userId}`);
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to send friend request');
-    }
-  }
-);
-
-export const acceptFriendRequest = createAsyncThunk(
-  'user/acceptFriendRequest',
-  async (userId: string, { rejectWithValue }) => {
-    try {
-      const response = await api.patch(`/users/friends/requests/${userId}/accept`);
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to accept friend request');
-    }
-  }
-);
-
-export const rejectFriendRequest = createAsyncThunk(
-  'user/rejectFriendRequest',
-  async (userId: string, { rejectWithValue }) => {
-    try {
-      const response = await api.patch(`/users/friends/requests/${userId}/reject`);
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to reject friend request');
-    }
-  }
-);
-
-export const removeFriend = createAsyncThunk(
-  'user/removeFriend',
-  async (userId: string, { rejectWithValue }) => {
-    try {
-      await api.delete(`/users/friends/${userId}`);
-      return userId;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to remove friend');
-    }
-  }
-);
-
 export const fetchNotifications = createAsyncThunk(
   'user/fetchNotifications',
-  async (_, { rejectWithValue }) => {
+  async (params: { page?: number; limit?: number; read?: boolean } = {}, { rejectWithValue }) => {
     try {
-      const response = await api.get('/users/notifications');
-      return response.data.data.items;
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.read !== undefined) queryParams.append('read', params.read.toString());
+      
+      const response = await api.get<ApiResponse<PaginatedResponse<Notification>>>(`/notifications?${queryParams.toString()}`);
+      return response.data.data.items || response.data.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch notifications');
     }
@@ -174,10 +112,46 @@ export const markNotificationAsRead = createAsyncThunk(
   'user/markNotificationAsRead',
   async (notificationId: string, { rejectWithValue }) => {
     try {
-      const response = await api.patch(`/users/notifications/${notificationId}/read`);
-      return response.data.data;
+      await api.patch(`/notifications/${notificationId}/read`);
+      return notificationId;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to mark notification as read');
+    }
+  }
+);
+
+export const markAllNotificationsAsRead = createAsyncThunk(
+  'user/markAllNotificationsAsRead',
+  async (_, { rejectWithValue }) => {
+    try {
+      await api.patch('/notifications/read-all');
+      return true;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to mark all notifications as read');
+    }
+  }
+);
+
+export const fetchFriends = createAsyncThunk(
+  'user/fetchFriends',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get<ApiResponse<UserProfile[]>>('/users/friends');
+      return response.data.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch friends');
+    }
+  }
+);
+
+export const sendFriendRequest = createAsyncThunk(
+  'user/sendFriendRequest',
+  async (userId: string, { rejectWithValue }) => {
+    try {
+      const response = await api.post<ApiResponse<UserProfile>>(`/users/friends/request/${userId}`);
+      return response.data.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to send friend request');
     }
   }
 );
@@ -186,42 +160,51 @@ const userSlice = createSlice({
   name: 'user',
   initialState,
   reducers: {
-    setProfile: (state, action: PayloadAction<UserProfile>) => {
-      state.profile = action.payload;
-    },
-    
     updateBalance: (state, action: PayloadAction<number>) => {
       if (state.profile) {
-        state.profile.kcBalance = action.payload;
+        state.profile.balance = action.payload;
       }
     },
-    
+    addTransaction: (state, action: PayloadAction<Transaction>) => {
+      state.transactions.unshift(action.payload);
+      // Keep only last 100 transactions
+      if (state.transactions.length > 100) {
+        state.transactions = state.transactions.slice(0, 100);
+      }
+    },
     addNotification: (state, action: PayloadAction<Notification>) => {
       state.notifications.unshift(action.payload);
-    },
-    
-    updateUserStatus: (state, action: PayloadAction<{ userId: string; isOnline: boolean }>) => {
-      const { userId, isOnline } = action.payload;
-      
-      // Update in friends list
-      const friendIndex = state.friends.findIndex(friend => friend.id === userId);
-      if (friendIndex !== -1) {
-        state.friends[friendIndex].isOnline = isOnline;
-      }
-      
-      // Update in other profiles
-      if (state.otherProfiles[userId]) {
-        state.otherProfiles[userId].status = isOnline ? 'active' : 'inactive';
+      // Keep only last 50 notifications
+      if (state.notifications.length > 50) {
+        state.notifications = state.notifications.slice(0, 50);
       }
     },
-    
+    removeNotification: (state, action: PayloadAction<string>) => {
+      state.notifications = state.notifications.filter(n => n.id !== action.payload);
+    },
+    updateUserPreferences: (state, action: PayloadAction<any>) => {
+      if (state.profile) {
+        state.profile.preferences = { ...state.profile.preferences, ...action.payload };
+      }
+    },
+    incrementGameStats: (state, action: PayloadAction<{ played: boolean; won: boolean; earnings?: number }>) => {
+      if (state.profile) {
+        const { played, won, earnings = 0 } = action.payload;
+        if (played) state.profile.stats.gamesPlayed += 1;
+        if (won) state.profile.stats.gamesWon += 1;
+        if (earnings) state.profile.stats.totalEarnings += earnings;
+      }
+    },
+    clearError: (state) => {
+      state.error = null;
+    },
     clearNotifications: (state) => {
       state.notifications = [];
     },
   },
   extraReducers: (builder) => {
     builder
-      // Fetch user profile cases
+      // Fetch user profile
       .addCase(fetchUserProfile.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -235,21 +218,13 @@ const userSlice = createSlice({
         state.error = action.payload as string;
       })
       
-      // Fetch user by id cases
-      .addCase(fetchUserById.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Fetch user by ID
       .addCase(fetchUserById.fulfilled, (state, action) => {
-        state.loading = false;
-        state.otherProfiles[action.payload.id] = action.payload;
-      })
-      .addCase(fetchUserById.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+        const { userId, user } = action.payload;
+        state.otherProfiles[userId] = user;
       })
       
-      // Update user profile cases
+      // Update user profile
       .addCase(updateUserProfile.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -263,7 +238,7 @@ const userSlice = createSlice({
         state.error = action.payload as string;
       })
       
-      // Upload avatar cases
+      // Upload avatar
       .addCase(uploadAvatar.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -271,7 +246,7 @@ const userSlice = createSlice({
       .addCase(uploadAvatar.fulfilled, (state, action) => {
         state.loading = false;
         if (state.profile) {
-          state.profile.avatar = action.payload.avatar;
+          state.profile.avatar = action.payload.avatar || action.payload.url;
         }
       })
       .addCase(uploadAvatar.rejected, (state, action) => {
@@ -279,161 +254,48 @@ const userSlice = createSlice({
         state.error = action.payload as string;
       })
       
-      // Fetch transactions cases
-      .addCase(fetchTransactions.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Fetch transactions
       .addCase(fetchTransactions.fulfilled, (state, action) => {
-        state.loading = false;
         state.transactions = action.payload;
       })
-      .addCase(fetchTransactions.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
       
-      // Fetch friends cases
-      .addCase(fetchFriends.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchFriends.fulfilled, (state, action) => {
-        state.loading = false;
-        state.friends = action.payload;
-      })
-      .addCase(fetchFriends.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Fetch friend requests cases
-      .addCase(fetchFriendRequests.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchFriendRequests.fulfilled, (state, action) => {
-        state.loading = false;
-        state.friendRequests = action.payload;
-      })
-      .addCase(fetchFriendRequests.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Send friend request cases
-      .addCase(sendFriendRequest.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(sendFriendRequest.fulfilled, (state, action) => {
-        state.loading = false;
-        state.friendRequests.outgoing.push(action.payload);
-      })
-      .addCase(sendFriendRequest.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Accept friend request cases
-      .addCase(acceptFriendRequest.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(acceptFriendRequest.fulfilled, (state, action) => {
-        state.loading = false;
-        
-        // Add to friends list
-        state.friends.push(action.payload);
-        
-        // Remove from incoming requests
-        state.friendRequests.incoming = state.friendRequests.incoming.filter(
-          request => request.id !== action.payload.id
-        );
-      })
-      .addCase(acceptFriendRequest.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Reject friend request cases
-      .addCase(rejectFriendRequest.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(rejectFriendRequest.fulfilled, (state, action) => {
-        state.loading = false;
-        
-        // Remove from incoming requests
-        state.friendRequests.incoming = state.friendRequests.incoming.filter(
-          request => request.id !== action.payload.id
-        );
-      })
-      .addCase(rejectFriendRequest.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Remove friend cases
-      .addCase(removeFriend.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(removeFriend.fulfilled, (state, action) => {
-        state.loading = false;
-        
-        // Remove from friends list
-        state.friends = state.friends.filter(friend => friend.id !== action.payload);
-      })
-      .addCase(removeFriend.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Fetch notifications cases
-      .addCase(fetchNotifications.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Fetch notifications
       .addCase(fetchNotifications.fulfilled, (state, action) => {
-        state.loading = false;
         state.notifications = action.payload;
       })
-      .addCase(fetchNotifications.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
       
-      // Mark notification as read cases
-      .addCase(markNotificationAsRead.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Mark notification as read
       .addCase(markNotificationAsRead.fulfilled, (state, action) => {
-        state.loading = false;
-        
-        // Update notification in list
-        const notificationIndex = state.notifications.findIndex(
-          notification => notification.id === action.payload.id
-        );
-        
-        if (notificationIndex !== -1) {
-          state.notifications[notificationIndex].isRead = true;
+        const notificationId = action.payload;
+        const notification = state.notifications.find(n => n.id === notificationId);
+        if (notification) {
+          notification.read = true;
         }
       })
-      .addCase(markNotificationAsRead.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+      
+      // Mark all notifications as read
+      .addCase(markAllNotificationsAsRead.fulfilled, (state) => {
+        state.notifications.forEach(notification => {
+          notification.read = true;
+        });
+      })
+      
+      // Fetch friends
+      .addCase(fetchFriends.fulfilled, (state, action) => {
+        state.friends = action.payload;
       });
   },
 });
 
-export const { 
-  setProfile, 
-  updateBalance, 
-  addNotification, 
-  updateUserStatus,
-  clearNotifications
+export const {
+  updateBalance,
+  addTransaction,
+  addNotification,
+  removeNotification,
+  updateUserPreferences,
+  incrementGameStats,
+  clearError,
+  clearNotifications,
 } = userSlice.actions;
 
 export default userSlice.reducer;

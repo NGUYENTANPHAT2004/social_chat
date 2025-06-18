@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import DashboardTemplate from '@/components/templates/DashboardTemplate/DashboardTemplate';
 import ChatPanel from '@/components/organisms/ChatPanel/ChatPanel';
 import FeatureSidebar from '@/components/organisms/FeatureSidebar/FeatureSidebar';
@@ -10,10 +10,10 @@ import { useSocket } from '@/hooks/useSocket';
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   useSocket(); // Initialize socket connection
-
+  const [activeTab, setActiveTab] = useState('chat');
   return (
     <DashboardTemplate
-      sidebar={<ChatPanel />}
+    leftSidebar={<ChatPanel activeTab={activeTab} />}
       rightSidebar={<FeatureSidebar />}
     >
       <div className="p-6">

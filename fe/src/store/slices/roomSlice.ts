@@ -1,9 +1,29 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { RoomState, Room, RoomViewer, CreateRoomDto, UpdateRoomDto } from '@/types';
+import { RoomState, Room, UserBasic, CreateRoomDto, UpdateRoomDto, ApiResponse, PaginatedResponse } from '@/types';
 import { API_ENDPOINTS } from '@/constants';
 import api from '@/services/api';
 
-const initialState: RoomState = {
+// Define RoomViewer interface
+interface RoomViewer extends UserBasic {
+  roomId: string;
+}
+
+// Extend Room interface to include streaming properties
+interface ExtendedRoom extends Room {
+  status: 'live' | 'inactive';
+  streamKey: string;
+  viewers: number;
+}
+
+// Update RoomState interface
+interface ExtendedRoomState extends Omit<RoomState, 'rooms' | 'myRooms' | 'liveRooms' | 'currentRoom'> {
+  rooms: ExtendedRoom[];
+  myRooms: ExtendedRoom[];
+  liveRooms: ExtendedRoom[];
+  currentRoom: ExtendedRoom | null;
+}
+
+const initialState: ExtendedRoomState = {
   rooms: [],
   myRooms: [],
   liveRooms: [],
@@ -19,8 +39,12 @@ export const fetchAllRooms = createAsyncThunk(
   'room/fetchAllRooms',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.ROOMS);
-      return response.data.data.items;
+      const response = await api.get<ApiResponse<PaginatedResponse<ExtendedRoom>>>(API_ENDPOINTS.ROOMS);
+      const rooms = response.data.data.items.map(room => ({
+        ...room,
+        status: room.status as 'live' | 'inactive'
+      }));
+      return rooms;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch rooms');
     }
@@ -31,8 +55,12 @@ export const fetchLiveRooms = createAsyncThunk(
   'room/fetchLiveRooms',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.LIVE_ROOMS);
-      return response.data.data.items;
+      const response = await api.get<ApiResponse<PaginatedResponse<ExtendedRoom>>>(API_ENDPOINTS.LIVE_ROOMS);
+      const rooms = response.data.data.items.map(room => ({
+        ...room,
+        status: room.status as 'live' | 'inactive'
+      }));
+      return rooms;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch live rooms');
     }
@@ -43,8 +71,12 @@ export const fetchMyRooms = createAsyncThunk(
   'room/fetchMyRooms',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.MY_ROOMS);
-      return response.data.data.items;
+      const response = await api.get<ApiResponse<PaginatedResponse<ExtendedRoom>>>(API_ENDPOINTS.MY_ROOMS);
+      const rooms = response.data.data.items.map(room => ({
+        ...room,
+        status: room.status as 'live' | 'inactive'
+      }));
+      return rooms;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch your rooms');
     }
@@ -55,8 +87,12 @@ export const fetchRoomById = createAsyncThunk(
   'room/fetchRoomById',
   async (roomId: string, { rejectWithValue }) => {
     try {
-      const response = await api.get(API_ENDPOINTS.ROOM_BY_ID(roomId));
-      return response.data.data;
+      const response = await api.get<ApiResponse<ExtendedRoom>>(API_ENDPOINTS.ROOM_BY_ID(roomId));
+      const room = {
+        ...response.data.data,
+        status: response.data.data.status as 'live' | 'inactive'
+      };
+      return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch room');
     }
@@ -67,8 +103,12 @@ export const createRoom = createAsyncThunk(
   'room/createRoom',
   async (roomData: CreateRoomDto, { rejectWithValue }) => {
     try {
-      const response = await api.post(API_ENDPOINTS.ROOMS, roomData);
-      return response.data.data;
+      const response = await api.post<ApiResponse<ExtendedRoom>>(API_ENDPOINTS.ROOMS, roomData);
+      const room = {
+        ...response.data.data,
+        status: response.data.data.status as 'live' | 'inactive'
+      };
+      return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to create room');
     }
@@ -79,8 +119,12 @@ export const updateRoom = createAsyncThunk(
   'room/updateRoom',
   async ({ roomId, roomData }: { roomId: string; roomData: UpdateRoomDto }, { rejectWithValue }) => {
     try {
-      const response = await api.patch(API_ENDPOINTS.ROOM_BY_ID(roomId), roomData);
-      return response.data.data;
+      const response = await api.patch<ApiResponse<ExtendedRoom>>(API_ENDPOINTS.ROOM_BY_ID(roomId), roomData);
+      const room = {
+        ...response.data.data,
+        status: response.data.data.status as 'live' | 'inactive'
+      };
+      return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to update room');
     }
@@ -103,8 +147,12 @@ export const startStream = createAsyncThunk(
   'room/startStream',
   async (roomId: string, { rejectWithValue }) => {
     try {
-      const response = await api.post(`${API_ENDPOINTS.ROOM_BY_ID(roomId)}/start-stream`);
-      return response.data.data;
+      const response = await api.post<ApiResponse<ExtendedRoom>>(`${API_ENDPOINTS.ROOM_BY_ID(roomId)}/start-stream`);
+      const room = {
+        ...response.data.data,
+        status: 'live' as const
+      };
+      return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to start stream');
     }
@@ -115,8 +163,12 @@ export const endStream = createAsyncThunk(
   'room/endStream',
   async (roomId: string, { rejectWithValue }) => {
     try {
-      const response = await api.post(`${API_ENDPOINTS.ROOM_BY_ID(roomId)}/end-stream`);
-      return response.data.data;
+      const response = await api.post<ApiResponse<ExtendedRoom>>(`${API_ENDPOINTS.ROOM_BY_ID(roomId)}/end-stream`);
+      const room = {
+        ...response.data.data,
+        status: 'inactive' as const
+      };
+      return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to end stream');
     }
@@ -127,7 +179,7 @@ const roomSlice = createSlice({
   name: 'room',
   initialState,
   reducers: {
-    setCurrentRoom: (state, action: PayloadAction<Room>) => {
+    setCurrentRoom: (state, action: PayloadAction<ExtendedRoom>) => {
       state.currentRoom = action.payload;
       
       // Set HLS stream URL
@@ -146,7 +198,7 @@ const roomSlice = createSlice({
     },
     
     addViewer: (state, action: PayloadAction<RoomViewer>) => {
-      if (!state.viewers.some(viewer => viewer.userId === action.payload.userId)) {
+      if (!state.viewers.some(viewer => viewer.id === action.payload.id)) {
         state.viewers.push(action.payload);
       }
       
@@ -157,7 +209,7 @@ const roomSlice = createSlice({
     },
     
     removeViewer: (state, action: PayloadAction<string>) => {
-      state.viewers = state.viewers.filter(viewer => viewer.userId !== action.payload);
+      state.viewers = state.viewers.filter(viewer => viewer.id !== action.payload);
       
       // Update viewer count in current room
       if (state.currentRoom) {
@@ -197,9 +249,12 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchAllRooms.fulfilled, (state, action) => {
+      .addCase(fetchAllRooms.fulfilled, (state, action: PayloadAction<ExtendedRoom[]>) => {
         state.loading = false;
-        state.rooms = action.payload;
+        state.rooms = action.payload.map(room => ({
+          ...room,
+          status: room.status as 'live' | 'inactive'
+        }));
       })
       .addCase(fetchAllRooms.rejected, (state, action) => {
         state.loading = false;
@@ -211,9 +266,12 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchLiveRooms.fulfilled, (state, action) => {
+      .addCase(fetchLiveRooms.fulfilled, (state, action: PayloadAction<ExtendedRoom[]>) => {
         state.loading = false;
-        state.liveRooms = action.payload;
+        state.liveRooms = action.payload.map(room => ({
+          ...room,
+          status: room.status as 'live' | 'inactive'
+        }));
       })
       .addCase(fetchLiveRooms.rejected, (state, action) => {
         state.loading = false;
@@ -225,9 +283,12 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchMyRooms.fulfilled, (state, action) => {
+      .addCase(fetchMyRooms.fulfilled, (state, action: PayloadAction<ExtendedRoom[]>) => {
         state.loading = false;
-        state.myRooms = action.payload;
+        state.myRooms = action.payload.map(room => ({
+          ...room,
+          status: room.status as 'live' | 'inactive'
+        }));
       })
       .addCase(fetchMyRooms.rejected, (state, action) => {
         state.loading = false;
@@ -239,9 +300,12 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchRoomById.fulfilled, (state, action) => {
+      .addCase(fetchRoomById.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
         state.loading = false;
-        state.currentRoom = action.payload;
+        state.currentRoom = {
+          ...action.payload,
+          status: action.payload.status as 'live' | 'inactive'
+        };
         
         // Set HLS stream URL if room is live
         if (action.payload && action.payload.status === 'live') {
@@ -261,10 +325,14 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(createRoom.fulfilled, (state, action) => {
+      .addCase(createRoom.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
         state.loading = false;
-        state.myRooms.push(action.payload);
-        state.rooms.push(action.payload);
+        const newRoom = {
+          ...action.payload,
+          status: action.payload.status as 'live' | 'inactive'
+        };
+        state.myRooms.push(newRoom);
+        state.rooms.push(newRoom);
       })
       .addCase(createRoom.rejected, (state, action) => {
         state.loading = false;
@@ -276,28 +344,32 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(updateRoom.fulfilled, (state, action) => {
+      .addCase(updateRoom.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
         state.loading = false;
+        const updatedRoom = {
+          ...action.payload,
+          status: action.payload.status as 'live' | 'inactive'
+        };
         
         // Update in all room lists
-        const roomIndex = state.rooms.findIndex(room => room.id === action.payload.id);
+        const roomIndex = state.rooms.findIndex(room => room.id === updatedRoom.id);
         if (roomIndex !== -1) {
-          state.rooms[roomIndex] = action.payload;
+          state.rooms[roomIndex] = updatedRoom;
         }
         
-        const liveRoomIndex = state.liveRooms.findIndex(room => room.id === action.payload.id);
+        const liveRoomIndex = state.liveRooms.findIndex(room => room.id === updatedRoom.id);
         if (liveRoomIndex !== -1) {
-          state.liveRooms[liveRoomIndex] = action.payload;
+          state.liveRooms[liveRoomIndex] = updatedRoom;
         }
         
-        const myRoomIndex = state.myRooms.findIndex(room => room.id === action.payload.id);
+        const myRoomIndex = state.myRooms.findIndex(room => room.id === updatedRoom.id);
         if (myRoomIndex !== -1) {
-          state.myRooms[myRoomIndex] = action.payload;
+          state.myRooms[myRoomIndex] = updatedRoom;
         }
         
         // Update current room if it's the same
-        if (state.currentRoom && state.currentRoom.id === action.payload.id) {
-          state.currentRoom = action.payload;
+        if (state.currentRoom && state.currentRoom.id === updatedRoom.id) {
+          state.currentRoom = updatedRoom;
         }
       })
       .addCase(updateRoom.rejected, (state, action) => {
@@ -335,13 +407,13 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(startStream.fulfilled, (state, action) => {
+      .addCase(startStream.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
         state.loading = false;
         
         // Update room status in all lists
-        const updateRoomStatus = (room: Room) => {
+        const updateRoomStatus = (room: ExtendedRoom) => {
           if (room.id === action.payload.id) {
-            return { ...room, status: 'live' };
+            return { ...room, status: 'live' as const };
           }
           return room;
         };
@@ -351,12 +423,18 @@ const roomSlice = createSlice({
         
         // Add to live rooms if not already there
         if (!state.liveRooms.some(room => room.id === action.payload.id)) {
-          state.liveRooms.push(action.payload);
+          state.liveRooms.push({
+            ...action.payload,
+            status: 'live' as const
+          });
         }
         
         // Update current room if it's the same
         if (state.currentRoom && state.currentRoom.id === action.payload.id) {
-          state.currentRoom = action.payload;
+          state.currentRoom = {
+            ...action.payload,
+            status: 'live' as const
+          };
           
           // Set HLS stream URL
           const streamEndpoint = process.env.NEXT_PUBLIC_STREAMING_URL || 'http://localhost:5000/live';
@@ -373,13 +451,13 @@ const roomSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(endStream.fulfilled, (state, action) => {
+      .addCase(endStream.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
         state.loading = false;
         
         // Update room status in all lists
-        const updateRoomStatus = (room: Room) => {
+        const updateRoomStatus = (room: ExtendedRoom) => {
           if (room.id === action.payload.id) {
-            return { ...room, status: 'inactive' };
+            return { ...room, status: 'inactive' as const };
           }
           return room;
         };
@@ -392,7 +470,10 @@ const roomSlice = createSlice({
         
         // Update current room if it's the same
         if (state.currentRoom && state.currentRoom.id === action.payload.id) {
-          state.currentRoom = action.payload;
+          state.currentRoom = {
+            ...action.payload,
+            status: 'inactive' as const
+          };
           state.streamUrl = null;
         }
       })

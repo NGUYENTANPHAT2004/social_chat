@@ -9,7 +9,7 @@ class SocketService {
   connect(token: string) {
     if (this.socket?.connected) return;
 
-    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
+    const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL;
     
     this.socket = io(SOCKET_URL, {
       auth: { token },

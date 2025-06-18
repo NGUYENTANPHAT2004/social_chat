@@ -7,7 +7,7 @@ import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 
 const RegisterPage: React.FC = () => {
   const router = useRouter();
-  const { register, loading, error, clearError } = useAuth();
+  const { register, isLoading, error, clearError } = useAuth();
   
   const [formData, setFormData] = useState({
     username: '',
@@ -160,10 +160,10 @@ const RegisterPage: React.FC = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-all"
             >
-              {loading ? 'Creating Account...' : 'Create Account'}
+              {isLoading ? 'Creating Account...' : 'Create Account'}
             </button>
           </form>
         </div>

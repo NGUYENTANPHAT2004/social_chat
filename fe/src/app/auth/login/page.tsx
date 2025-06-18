@@ -7,7 +7,7 @@ import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
   const router = useRouter();
-  const { login, loading, error, clearError } = useAuth();
+  const { login, isLoading, error, clearError } = useAuth();
   
   const [formData, setFormData] = useState({
     email: '',
@@ -103,10 +103,10 @@ const LoginPage: React.FC = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-all"
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? 'Signing in...' : 'Sign In'}
             </button>
 
             {/* Forgot Password */}

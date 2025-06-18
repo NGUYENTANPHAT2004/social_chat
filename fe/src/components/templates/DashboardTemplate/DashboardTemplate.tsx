@@ -8,18 +8,24 @@ import { Menu, X } from 'lucide-react';
 
 interface DashboardTemplateProps {
   children: React.ReactNode;
-  sidebar?: React.ReactNode;
+  leftSidebar?: React.ReactNode;
   rightSidebar?: React.ReactNode;
+  leftSidebarTitle?: string;
+  rightSidebarTitle?: string;
 }
 
 const DashboardTemplate: React.FC<DashboardTemplateProps> = ({
   children,
-  sidebar,
-  rightSidebar
+  leftSidebar,
+  rightSidebar,
+  leftSidebarTitle,
+  rightSidebarTitle,
 }) => {
-  const { isMobile, isTablet } = useResponsive();
-  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  const { isMobile } = useResponsive();
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(!isMobile);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(!isMobile);
+  const [activeTab, setActiveTab] = useState('chat');
+  const [showGames, setShowGames] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -27,13 +33,13 @@ const DashboardTemplate: React.FC<DashboardTemplateProps> = ({
       {isMobile && (
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
             className="p-2 rounded-lg hover:bg-gray-100"
           >
-            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            {leftSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
           
-          <h1 className="font-semibold text-lg">Dashboard</h1>
+          <h1 className="font-semibold text-lg">LiveMate</h1>
           
           {rightSidebar && (
             <button
@@ -47,66 +53,49 @@ const DashboardTemplate: React.FC<DashboardTemplateProps> = ({
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Navigation - Desktop */}
+        {/* Left Navigation - Desktop Only */}
         {!isMobile && (
-          <div className="w-20 bg-indigo-900 flex-shrink-0">
-            <Navigation />
+          <div className="flex-shrink-0">
+            <Navigation
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              showGames={showGames}
+              setShowGames={setShowGames}
+            />
           </div>
         )}
 
         {/* Left Sidebar */}
-        {sidebar && (
-          <div className={`
-            ${isMobile 
-              ? `fixed inset-y-0 left-0 z-50 w-80 transform transition-transform ${
-                  sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-                }`
-              : 'relative w-80 flex-shrink-0'
-            }
-            bg-white border-r border-gray-200 overflow-hidden
-          `}>
-            {sidebar}
-            
-            {/* Mobile overlay */}
-            {isMobile && sidebarOpen && (
-              <div 
-                className="fixed inset-0 bg-black/50 z-40"
-                onClick={() => setSidebarOpen(false)}
-              />
-            )}
-          </div>
+        {leftSidebar && (
+          <Sidebar
+            isOpen={leftSidebarOpen}
+            onClose={() => setLeftSidebarOpen(false)}
+            title={leftSidebarTitle}
+            position="left"
+            width="w-80"
+          >
+            {leftSidebar}
+          </Sidebar>
         )}
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <main className="flex-1 overflow-y-auto custom-scrollbar">
+          <main className="flex-1 overflow-hidden">
             {children}
           </main>
         </div>
 
         {/* Right Sidebar */}
         {rightSidebar && (
-          <div className={`
-            ${isMobile 
-              ? `fixed inset-y-0 right-0 z-50 w-80 transform transition-transform ${
-                  rightSidebarOpen ? 'translate-x-0' : 'translate-x-full'
-                }`
-              : isTablet 
-                ? 'hidden'
-                : 'relative w-80 flex-shrink-0'
-            }
-            bg-gray-50 border-l border-gray-200 overflow-hidden
-          `}>
+          <Sidebar
+            isOpen={rightSidebarOpen}
+            onClose={() => setRightSidebarOpen(false)}
+            title={rightSidebarTitle}
+            position="right"
+            width="w-80"
+          >
             {rightSidebar}
-            
-            {/* Mobile overlay */}
-            {isMobile && rightSidebarOpen && (
-              <div 
-                className="fixed inset-0 bg-black/50 z-40"
-                onClick={() => setRightSidebarOpen(false)}
-              />
-            )}
-          </div>
+          </Sidebar>
         )}
       </div>
 
