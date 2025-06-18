@@ -11,17 +11,26 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   register: (userData: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   clearError: () => void;
   updateUser: (userData: Partial<User>) => void;
+  refreshToken: () => Promise<boolean>;
+  loginWithGoogle: () => void;
+  loginWithFacebook: () => void;
 }
 
 interface RegisterData {
   username: string;
   email: string;
   password: string;
+}
+
+interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  user: User;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,7 +40,8 @@ type AuthAction =
   | { type: 'AUTH_SUCCESS'; payload: User }
   | { type: 'AUTH_ERROR'; payload: string }
   | { type: 'AUTH_LOGOUT' }
-  | { type: 'CLEAR_ERROR' };
+  | { type: 'CLEAR_ERROR' }
+  | { type: 'UPDATE_USER'; payload: Partial<User> };
 
 const authReducer = (state: AuthState, action: AuthAction): AuthState => {
   switch (action.type) {
@@ -63,6 +73,11 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
       };
     case 'CLEAR_ERROR':
       return { ...state, error: null };
+    case 'UPDATE_USER':
+      return {
+        ...state,
+        user: state.user ? { ...state.user, ...action.payload } : null,
+      };
     default:
       return state;
   }
@@ -88,24 +103,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      const response = await apiService.get<User>('/users/profile');
+      // Sử dụng endpoint /auth/me thay vì /users/profile
+      const response = await apiService.get<User>('/auth/me');
       dispatch({ type: 'AUTH_SUCCESS', payload: response.data });
-    } catch (error) {
-      dispatch({ type: 'AUTH_LOGOUT' });
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
+    } catch (error: any) {
+      // Nếu token expired, thử refresh
+      const success = await refreshToken();
+      if (!success) {
+        dispatch({ type: 'AUTH_LOGOUT' });
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+      }
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (identifier: string, password: string) => {
     try {
       dispatch({ type: 'AUTH_START' });
       
-      const response = await apiService.post<{
-        access_token: string;
-        refresh_token: string;
-        user: User;
-      }>('/auth/login', { email, password });
+      // Sử dụng đúng format của backend (identifier thay vì email)
+      const response = await apiService.post<LoginResponse>('/auth/login', { 
+        identifier, 
+        password 
+      });
 
       const { access_token, refresh_token, user } = response.data;
       
@@ -114,7 +134,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       dispatch({ type: 'AUTH_SUCCESS', payload: user });
     } catch (error: any) {
-      dispatch({ type: 'AUTH_ERROR', payload: error.response?.data?.message || 'Login failed' });
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          'Login failed';
+      dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      throw error;
     }
   };
 
@@ -122,11 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       dispatch({ type: 'AUTH_START' });
       
-      const response = await apiService.post<{
-        access_token: string;
-        refresh_token: string;
-        user: User;
-      }>('/auth/register', userData);
+      const response = await apiService.post<LoginResponse>('/auth/register', userData);
 
       const { access_token, refresh_token, user } = response.data;
       
@@ -135,14 +155,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       dispatch({ type: 'AUTH_SUCCESS', payload: user });
     } catch (error: any) {
-      dispatch({ type: 'AUTH_ERROR', payload: error.response?.data?.message || 'Registration failed' });
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          'Registration failed';
+      dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      throw error;
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    dispatch({ type: 'AUTH_LOGOUT' });
+  const refreshToken = async (): Promise<boolean> => {
+    try {
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (!refreshToken) return false;
+
+      const response = await apiService.post<{ access_token: string; refresh_token: string }>('/auth/refresh-token', {
+        refreshToken
+      });
+
+      const { access_token, refresh_token } = response.data;
+      
+      localStorage.setItem('token', access_token);
+      localStorage.setItem('refreshToken', refresh_token);
+      
+      return true;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      return false;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        await apiService.post('/auth/logout', { refreshToken });
+      }
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+    } finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      dispatch({ type: 'AUTH_LOGOUT' });
+    }
+  };
+
+  const loginWithGoogle = () => {
+    // Redirect to Google OAuth
+    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/google`;
+  };
+
+  const loginWithFacebook = () => {
+    // Redirect to Facebook OAuth
+    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/facebook`;
   };
 
   const clearError = () => {
@@ -150,9 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUser = (userData: Partial<User>) => {
-    if (state.user) {
-      dispatch({ type: 'AUTH_SUCCESS', payload: { ...state.user, ...userData } });
-    }
+    dispatch({ type: 'UPDATE_USER', payload: userData });
   };
 
   return (
@@ -164,6 +226,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         clearError,
         updateUser,
+        refreshToken,
+        loginWithGoogle,
+        loginWithFacebook,
       }}
     >
       {children}

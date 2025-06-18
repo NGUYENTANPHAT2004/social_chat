@@ -1,10 +1,15 @@
-import axios, { AxiosResponse, AxiosError } from 'axios';
+import axios, { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { ApiResponse } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 class ApiService {
   private axiosInstance;
+  private isRefreshing = false;
+  private failedQueue: Array<{
+    resolve: (value?: any) => void;
+    reject: (error?: any) => void;
+  }> = [];
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -21,9 +26,9 @@ class ApiService {
   private setupInterceptors() {
     // Request interceptor
     this.axiosInstance.interceptors.request.use(
-      (config) => {
+      (config: InternalAxiosRequestConfig) => {
         const token = localStorage.getItem('token');
-        if (token) {
+        if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`;
         }
         return config;
@@ -35,33 +40,92 @@ class ApiService {
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse) => response,
       async (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          // Handle token refresh
+        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          if (this.isRefreshing) {
+            // If a refresh is already in progress, queue the request
+            return new Promise((resolve, reject) => {
+              this.failedQueue.push({ resolve, reject });
+            }).then(token => {
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+              }
+              return this.axiosInstance.request(originalRequest);
+            }).catch(err => {
+              return Promise.reject(err);
+            });
+          }
+
+          originalRequest._retry = true;
+          this.isRefreshing = true;
+
           try {
-            await this.refreshToken();
-            return this.axiosInstance.request(error.config!);
+            const newToken = await this.refreshToken();
+            this.processQueue(null, newToken);
+            
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            }
+            return this.axiosInstance.request(originalRequest);
           } catch (refreshError) {
-            // Redirect to login
-            window.location.href = '/login';
+            this.processQueue(refreshError, null);
+            this.handleAuthError();
             return Promise.reject(refreshError);
+          } finally {
+            this.isRefreshing = false;
           }
         }
+
         return Promise.reject(error);
       }
     );
   }
 
-  private async refreshToken() {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) throw new Error('No refresh token');
-
-    const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
-      refreshToken,
+  private processQueue(error: any, token: string | null = null) {
+    this.failedQueue.forEach(({ resolve, reject }) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(token);
+      }
     });
+    
+    this.failedQueue = [];
+  }
 
-    const { access_token, refresh_token } = response.data.data;
-    localStorage.setItem('token', access_token);
-    localStorage.setItem('refreshToken', refresh_token);
+  private async refreshToken(): Promise<string> {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
+        refreshToken,
+      });
+
+      const { access_token, refresh_token } = response.data.data || response.data;
+      
+      localStorage.setItem('token', access_token);
+      localStorage.setItem('refreshToken', refresh_token);
+      
+      return access_token;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      throw error;
+    }
+  }
+
+  private handleAuthError() {
+    // Clear tokens
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    
+    // Redirect to login page
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login';
+    }
   }
 
   // Generic API methods
@@ -88,6 +152,32 @@ class ApiService {
   async delete<T>(url: string): Promise<ApiResponse<T>> {
     const response = await this.axiosInstance.delete(url);
     return response.data;
+  }
+
+  // Upload method for file uploads
+  async upload<T>(url: string, formData: FormData): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.post(url, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  // Method to get current token
+  getToken(): string | null {
+    return localStorage.getItem('token');
+  }
+
+  // Method to check if user is authenticated
+  isAuthenticated(): boolean {
+    const token = this.getToken();
+    return !!token;
+  }
+
+  // Method to manually trigger token refresh
+  async forceRefreshToken(): Promise<string> {
+    return this.refreshToken();
   }
 }
 

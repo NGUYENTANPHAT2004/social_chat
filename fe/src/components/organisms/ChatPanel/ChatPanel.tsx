@@ -1,339 +1,353 @@
-'use client';
-import React, { useState, useEffect } from 'react';
-import { useAppSelector, useAppDispatch } from '@/store/hooks';
-import { fetchChatRooms, setActiveChat } from '@/store/slices/chatSlice';
-import { fetchAllRooms, fetchLiveRooms } from '@/store/slices/roomSlice';
-import { fetchGames } from '@/store/slices/gameSlice';
-import SearchBox from '@/components/molecules/SearchBox/SearchBox';
-import UserProfile from '@/components/molecules/UserProfile/UserProfile';
-import GameCard from '@/components/molecules/GameCard/GameCard';
-import TabButton from '@/components/atoms/Button/Button';
+// components/organisms/ChatPanel/ChatPanelUI.tsx
+import React from 'react';
+import { MessageCircle, Users, Play, Video, Search, Plus } from 'lucide-react';
 import Avatar from '@/components/atoms/Avatar/Avatar';
 import Badge from '@/components/atoms/Badge/Badge';
-import { MessageCircle, Users, Play, Video, Gamepad2 } from 'lucide-react';
+import Input from '@/components/atoms/Input/Input';
+import Button from '@/components/atoms/Button/Button';
+import LoadingSpinner from '@/components/atoms/LoadingSpinner/LoadingSpinner';
+import EmptyState from '@/components/molecules/EmptyState/EmptyState';
 
-interface ChatPanelProps {
-  activeTab: string;
-  currentChat?: string;
-  setCurrentChat?: (id: string) => void;
-  showGames?: boolean;
+// Types
+export interface ChatRoom {
+  id: string;
+  name: string;
+  type: 'private' | 'group';
+  avatar?: string;
+  lastMessage?: string;
+  lastMessageTime?: string;
+  unreadCount: number;
+  isOnline?: boolean;
+  participants?: Array<{
+    id: string;
+    username: string;
+    avatar?: string;
+    isOnline: boolean;
+  }>;
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({
-  activeTab,
-  currentChat,
-  setCurrentChat,
-  showGames = false,
-}) => {
-  const dispatch = useAppDispatch();
-  const { chatRooms, loading: chatLoading } = useAppSelector((state) => state.chat);
-  const { rooms, liveRooms, loading: roomLoading } = useAppSelector((state) => state.room);
-  const { games, loading: gameLoading } = useAppSelector((state) => state.game);
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+export interface Room {
+  id: string;
+  name: string;
+  description?: string;
+  hostId: string;
+  hostName: string;
+  hostAvatar?: string;
+  viewerCount: number;
+  isLive: boolean;
+  thumbnail?: string;
+  category?: string;
+}
 
-  useEffect(() => {
+export interface Game {
+  id: string;
+  name: string;
+  type: string;
+  minBet: number;
+  maxBet: number;
+  playCount: number;
+  thumbnail: string;
+  category?: string;
+}
+
+export interface ChatPanelUIProps {
+  activeTab: 'chat' | 'groups' | 'video' | 'reels' | 'games';
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  loading?: boolean;
+  
+  // Chat tab props
+  chatRooms?: ChatRoom[];
+  currentChatId?: string;
+  onChatSelect?: (chatId: string) => void;
+  onCreateChat?: () => void;
+  
+  // Groups/Rooms tab props
+  rooms?: Room[];
+  onRoomSelect?: (roomId: string) => void;
+  onCreateRoom?: () => void;
+  
+  // Games tab props
+  games?: Game[];
+  gameCategories?: string[];
+  selectedGameCategory?: string;
+  onGameSelect?: (gameId: string) => void;
+  onGameCategoryChange?: (category: string) => void;
+}
+
+const ChatPanelUI: React.FC<ChatPanelUIProps> = ({
+  activeTab,
+  searchQuery,
+  onSearchChange,
+  loading = false,
+  chatRooms = [],
+  currentChatId,
+  onChatSelect,
+  onCreateChat,
+  rooms = [],
+  onRoomSelect,
+  onCreateRoom,
+  games = [],
+  gameCategories = ['All', 'Popular', 'New', 'Slots', 'Cards', 'Dice'],
+  selectedGameCategory = 'All',
+  onGameSelect,
+  onGameCategoryChange,
+}) => {
+  // Tab Icons
+  const getTabIcon = () => {
     switch (activeTab) {
       case 'chat':
-        dispatch(fetchChatRooms());
-        break;
+        return <MessageCircle className="w-5 h-5" />;
       case 'groups':
+        return <Users className="w-5 h-5" />;
       case 'video':
-        dispatch(fetchAllRooms());
-        dispatch(fetchLiveRooms());
-        break;
+        return <Video className="w-5 h-5" />;
       case 'games':
-        dispatch(fetchGames());
-        break;
+        return <Play className="w-5 h-5" />;
+      default:
+        return null;
     }
-  }, [activeTab, dispatch]);
+  };
 
-  const renderChatList = () => (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-xl font-semibold mb-3">Messages</h2>
-        <SearchBox
-          placeholder="Search conversations..."
-          onSearch={setSearchQuery}
-          onClear={() => setSearchQuery('')}
+  // Tab Titles
+  const getTabTitle = () => {
+    switch (activeTab) {
+      case 'chat':
+        return 'Messages';
+      case 'groups':
+        return 'Rooms';
+      case 'video':
+        return 'Live Streams';
+      case 'games':
+        return 'Games';
+      default:
+        return '';
+    }
+  };
+
+  // Chat Room Item
+  const ChatRoomItem: React.FC<{ room: ChatRoom }> = ({ room }) => (
+    <div
+      className={`flex items-center p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
+        currentChatId === room.id ? 'bg-indigo-50' : ''
+      }`}
+      onClick={() => onChatSelect?.(room.id)}
+    >
+      <div className="relative">
+        <Avatar
+          src={room.avatar}
+          name={room.name}
+          size="md"
+          online={room.isOnline}
         />
       </div>
+      <div className="ml-3 flex-1 min-w-0">
+        <div className="flex justify-between items-baseline">
+          <h4 className="text-sm font-semibold text-gray-900 truncate">
+            {room.name}
+          </h4>
+          {room.lastMessageTime && (
+            <span className="text-xs text-gray-500 ml-2">
+              {room.lastMessageTime}
+            </span>
+          )}
+        </div>
+        {room.lastMessage && (
+          <p className="text-sm text-gray-600 truncate">{room.lastMessage}</p>
+        )}
+      </div>
+      {room.unreadCount > 0 && (
+        <Badge variant="primary" size="sm">
+          {room.unreadCount}
+        </Badge>
+      )}
+    </div>
+  );
 
-      {/* Chat List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {chatLoading ? (
-          <div className="p-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center space-x-3 p-3 animate-pulse">
-                <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
-                <div className="flex-1">
-                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-                </div>
-              </div>
-            ))}
-          </div>
+  // Room Item
+  const RoomItem: React.FC<{ room: Room }> = ({ room }) => (
+    <div
+      className="p-3 hover:bg-gray-50 cursor-pointer transition-colors rounded-lg"
+      onClick={() => onRoomSelect?.(room.id)}
+    >
+      <div className="flex items-start space-x-3">
+        {room.thumbnail ? (
+          <img
+            src={room.thumbnail}
+            alt={room.name}
+            className="w-16 h-16 rounded-lg object-cover"
+          />
         ) : (
-          <div>
-            {chatRooms
-              .filter(room => 
-                room.name.toLowerCase().includes(searchQuery.toLowerCase())
-              )
-              .map((room) => (
-                <div
-                  key={room.id}
-                  onClick={() => setCurrentChat?.(room.id)}
-                  className={`p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${
-                    currentChat === room.id ? 'bg-indigo-50 border-indigo-200' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative">
-                        <Avatar
-                          src={room.image}
-                          name={room.name}
-                          size="md"
-                          online={room.isActive}
-                        />
-                        {room.unreadCount > 0 && (
-                          <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                            {room.unreadCount}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-gray-900 truncate">
-                          {room.name}
-                        </h3>
-                        <p className="text-sm text-gray-500 truncate">
-                          {room.lastMessage || 'No messages yet'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-gray-400">
-                        {room.lastMessageTime}
-                      </p>
-                      {room.isActive && (
-                        <div className="w-2 h-2 bg-green-500 rounded-full ml-auto mt-1"></div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+          <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+            <Users className="w-6 h-6 text-white" />
           </div>
         )}
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-semibold text-gray-900">{room.name}</h4>
+          <p className="text-xs text-gray-600 mt-1">{room.hostName}</p>
+          <div className="flex items-center mt-2 space-x-3">
+            {room.isLive && (
+              <Badge variant="danger" size="sm">
+                LIVE
+              </Badge>
+            )}
+            <span className="text-xs text-gray-500 flex items-center">
+              <Users className="w-3 h-3 mr-1" />
+              {room.viewerCount}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
 
-  const renderRoomList = () => {
-    const roomsToShow = activeTab === 'video' ? liveRooms : rooms;
-    
-    return (
-      <div className="h-full flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold mb-3">
-            {activeTab === 'video' ? 'Live Rooms' : 'All Rooms'}
-          </h2>
-          <SearchBox
-            placeholder="Search rooms..."
-            onSearch={setSearchQuery}
-            onClear={() => setSearchQuery('')}
+  // Game Item
+  const GameItem: React.FC<{ game: Game }> = ({ game }) => (
+    <div
+      className="p-3 hover:bg-gray-50 cursor-pointer transition-colors rounded-lg"
+      onClick={() => onGameSelect?.(game.id)}
+    >
+      <div className="flex items-center space-x-3">
+        <img
+          src={game.thumbnail}
+          alt={game.name}
+          className="w-12 h-12 rounded-lg object-cover"
+        />
+        <div className="flex-1">
+          <h4 className="text-sm font-semibold text-gray-900">{game.name}</h4>
+          <div className="flex items-center text-xs text-gray-500 mt-1">
+            <span>{game.playCount} playing</span>
+            <span className="mx-2">•</span>
+            <span>{game.minBet}-{game.maxBet} KC</span>
+          </div>
+        </div>
+        <Button variant="outline" size="sm">
+          Play
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="h-full flex flex-col bg-white">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            {getTabIcon()}
+            <h2 className="text-xl font-semibold">{getTabTitle()}</h2>
+          </div>
+          {(activeTab === 'chat' || activeTab === 'groups') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={activeTab === 'chat' ? onCreateChat : onCreateRoom}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+        
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            type="text"
+            placeholder={`Search ${getTabTitle().toLowerCase()}...`}
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="pl-10"
           />
         </div>
 
-        {/* Categories */}
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex space-x-2 overflow-x-auto">
-            {['all', 'gaming', 'music', 'talk', 'education'].map((category) => (
-              <button
+        {/* Game Categories */}
+        {activeTab === 'games' && (
+          <div className="flex space-x-2 mt-3 overflow-x-auto">
+            {gameCategories.map((category) => (
+              <Button
                 key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
-                  selectedCategory === category
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                variant={selectedGameCategory === category ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => onGameCategoryChange?.(category)}
               >
-                {category.charAt(0).toUpperCase() + category.slice(1)}
-              </button>
+                {category}
+              </Button>
             ))}
           </div>
-        </div>
-
-        {/* Room List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {roomLoading ? (
-            <div className="p-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="mb-4 p-3 border border-gray-200 rounded-lg animate-pulse">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
-                    <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded mb-1"></div>
-                      <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-                    </div>
-                  </div>
-                  <div className="h-3 bg-gray-200 rounded w-full"></div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="p-4 space-y-3">
-              {roomsToShow
-                .filter(room => {
-                  const matchesSearch = room.name.toLowerCase().includes(searchQuery.toLowerCase());
-                  const matchesCategory = selectedCategory === 'all' || room.category === selectedCategory;
-                  return matchesSearch && matchesCategory;
-                })
-                .map((room) => (
-                  <div
-                    key={room.id}
-                    className="p-3 border border-gray-200 rounded-lg hover:shadow-md transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center space-x-3 mb-2">
-                      <div className="w-10 h-10 rounded-lg overflow-hidden">
-                        <img 
-                          src={room.image} 
-                          alt={room.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <h3 className="font-medium text-gray-900 truncate">
-                            {room.name}
-                          </h3>
-                          {room.isLive && (
-                            <Badge variant="danger" size="sm">
-                              LIVE
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2 text-sm text-gray-500">
-                          <Users className="w-4 h-4" />
-                          <span>{room.viewerCount} viewers</span>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {room.description}
-                    </p>
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center space-x-1">
-                        <Avatar
-                          src={room.host.avatar}
-                          name={room.host.username}
-                          size="xs"
-                        />
-                        <span className="text-xs text-gray-500">
-                          {room.host.username}
-                        </span>
-                      </div>
-                      <div className="flex space-x-1">
-                        {room.tags.slice(0, 2).map((tag) => (
-                          <Badge key={tag} variant="secondary" size="sm">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderGameList = () => (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-xl font-semibold mb-3">Games</h2>
-        <SearchBox
-          placeholder="Search games..."
-          onSearch={setSearchQuery}
-          onClear={() => setSearchQuery('')}
-        />
+        )}
       </div>
 
-      {/* Game Categories */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex space-x-2 overflow-x-auto">
-          {['all', 'lucky', 'card', 'dice', 'spin'].map((category) => (
-            <button
-              key={category}
-              onClick={() => setSelectedCategory(category)}
-              className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
-                selectedCategory === category
-                  ? 'bg-purple-100 text-purple-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {category.charAt(0).toUpperCase() + category.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Game List */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {gameLoading ? (
-          <div className="p-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="mb-3 animate-pulse">
-                <div className="flex items-center space-x-3 p-3">
-                  <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
-                  <div className="flex-1">
-                    <div className="h-4 bg-gray-200 rounded mb-1"></div>
-                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-                  </div>
-                </div>
-              </div>
-            ))}
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <LoadingSpinner size="lg" />
           </div>
         ) : (
-          <div className="p-4 space-y-2">
-            {games
-              .filter(game => {
-                const matchesSearch = game.name.toLowerCase().includes(searchQuery.toLowerCase());
-                const matchesCategory = selectedCategory === 'all' || game.type === selectedCategory;
-                return matchesSearch && matchesCategory;
-              })
-              .map((game) => (
-                <GameCard
-                  key={game.id}
-                  game={game}
-                  variant="compact"
-                  onPlay={(gameId) => console.log('Play game:', gameId)}
-                />
-              ))}
-          </div>
+          <>
+            {/* Chat List */}
+            {activeTab === 'chat' && (
+              <div className="divide-y divide-gray-100">
+                {chatRooms.length > 0 ? (
+                  chatRooms.map((room) => (
+                    <ChatRoomItem key={room.id} room={room} />
+                  ))
+                ) : (
+                  <EmptyState
+                    icon={MessageCircle}
+                    title="No conversations"
+                    description="Start a new chat to connect with friends"
+                    action={{
+                      label: 'Start Chat',
+                      onClick: onCreateChat,
+                    }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Rooms List */}
+            {(activeTab === 'groups' || activeTab === 'video') && (
+              <div className="p-2 space-y-2">
+                {rooms.length > 0 ? (
+                  rooms.map((room) => (
+                    <RoomItem key={room.id} room={room} />
+                  ))
+                ) : (
+                  <EmptyState
+                    icon={Users}
+                    title="No rooms available"
+                    description="Create a room or wait for others to go live"
+                    action={{
+                      label: 'Create Room',
+                      onClick: onCreateRoom,
+                    }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Games List */}
+            {activeTab === 'games' && (
+              <div className="p-2 space-y-2">
+                {games.length > 0 ? (
+                  games.map((game) => (
+                    <GameItem key={game.id} game={game} />
+                  ))
+                ) : (
+                  <EmptyState
+                    icon={Play}
+                    title="No games found"
+                    description="Check back later for new games"
+                  />
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
   );
-
-  // Render based on active tab
-  switch (activeTab) {
-    case 'chat':
-      return renderChatList();
-    case 'groups':
-    case 'video':
-      return renderRoomList();
-    default:
-      if (showGames) {
-        return renderGameList();
-      }
-      return renderChatList();
-  }
 };
 
-export default ChatPanel;
+export default ChatPanelUI;
