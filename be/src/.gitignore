@@ -20,7 +20,7 @@ be/src/config/serviceAccountKey.json
 
 # IDEs and editors
 /.idea
-.projectgit rm --cached be/src/config/serviceAccountKey.json
+be/src/config/serviceAccountKey.json
 .classpath
 .c9/
 *.launch
