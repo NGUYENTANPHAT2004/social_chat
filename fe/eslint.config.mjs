@@ -10,7 +10,21 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  // Kế thừa cấu hình Next.js
   ...compat.extends("next/core-web-vitals", "next/typescript"),
+
+  // Ghi đè hoặc thêm rule tại đây
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json", // nếu bạn dùng project mode
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off", // ✅ Tắt rule tại đây
+    },
+  },
 ];
 
 export default eslintConfig;

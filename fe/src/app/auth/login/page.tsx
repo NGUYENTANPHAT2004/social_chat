@@ -1,25 +1,24 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
+import { Mail, Lock } from 'lucide-react';
 import Button from '@/components/atoms/Button/Button';
 import Input from '@/components/atoms/Input/Input';
 
 const LoginPage: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, loginWithGoogle, loginWithFacebook, isLoading, error, clearError, isAuthenticated } = useAuth();
+  const { login, loginWithGoogle, loginWithFacebook, isLoading, error, clearError, isAuthenticated, updateUser } = useAuth();
   
   const [formData, setFormData] = useState({
     identifier: '', // Có thể là email hoặc username
     password: '',
   });
-  const [showPassword, setShowPassword] = useState(false);
 
   // Handle OAuth callbacks
-  useEffect(() => {
+  const handleOAuthCallback = useCallback(() => {
     const token = searchParams.get('token');
     const refreshToken = searchParams.get('refreshToken');
     const userParam = searchParams.get('user');
@@ -29,18 +28,24 @@ const LoginPage: React.FC = () => {
         const user = JSON.parse(decodeURIComponent(userParam));
         localStorage.setItem('token', token);
         localStorage.setItem('refreshToken', refreshToken);
-        // Có thể dispatch success action ở đây nếu cần
+        updateUser(user);
         router.push('/');
       } catch (error) {
         console.error('OAuth callback error:', error);
       }
     }
-  }, [searchParams, router]);
+  }, [searchParams, router, updateUser]);
+
+  useEffect(() => {
+    handleOAuthCallback();
+  }, [handleOAuthCallback]);
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/');
+      const redirect = localStorage.getItem('oauth_redirect') || '/';
+      localStorage.removeItem('oauth_redirect');
+      router.push(redirect);
     }
   }, [isAuthenticated, router]);
 
@@ -53,6 +58,7 @@ const LoginPage: React.FC = () => {
       // Redirect sẽ được handle bởi useEffect trên
     } catch (error) {
       // Error đã được handle trong AuthContext
+      console.error('Login error:', error);
     }
   };
 
@@ -189,7 +195,7 @@ const LoginPage: React.FC = () => {
         {/* Sign Up Link */}
         <div className="text-center mt-6">
           <p className="text-gray-300">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/auth/register" className="text-purple-300 hover:text-purple-200 font-medium">
               Sign up
             </Link>

@@ -1,9 +1,9 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { Eye, EyeOff, Mail, Lock, User, CheckCircle, XCircle } from 'lucide-react';
+import { Mail, Lock, User, CheckCircle, XCircle } from 'lucide-react';
 import Button from '@/components/atoms/Button/Button';
 import Input from '@/components/atoms/Input/Input';
 
@@ -26,18 +26,18 @@ const RegisterPage: React.FC = () => {
   });
   
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/');
+      const redirect = localStorage.getItem('oauth_redirect') || '/';
+      localStorage.removeItem('oauth_redirect');
+      router.push(redirect);
     }
   }, [isAuthenticated, router]);
 
   // Validation rules based on backend RegisterDto
-  const validateField = (name: string, value: string): string | null => {
+  const validateField = useCallback((name: string, value: string, currentFormData: typeof formData): string | null => {
     switch (name) {
       case 'username':
         if (!value) return 'Username is required';
@@ -63,13 +63,13 @@ const RegisterPage: React.FC = () => {
         
       case 'confirmPassword':
         if (!value) return 'Please confirm your password';
-        if (value !== formData.password) return 'Passwords do not match';
+        if (value !== currentFormData.password) return 'Passwords do not match';
         return null;
         
       default:
         return null;
     }
-  };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +78,7 @@ const RegisterPage: React.FC = () => {
     // Validate all fields
     const errors: ValidationErrors = {};
     Object.entries(formData).forEach(([key, value]) => {
-      const error = validateField(key, value);
+      const error = validateField(key, value, formData);
       if (error) errors[key as keyof ValidationErrors] = error;
     });
     
@@ -96,15 +96,17 @@ const RegisterPage: React.FC = () => {
       // Redirect sẽ được handle bởi useEffect trên
     } catch (error) {
       // Error đã được handle trong AuthContext
+      console.error('Registration error:', error);
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
+    const newFormData = {
+      ...formData,
       [name]: value,
-    }));
+    };
+    setFormData(newFormData);
     
     // Clear validation error when user starts typing
     if (validationErrors[name as keyof ValidationErrors]) {
@@ -116,7 +118,7 @@ const RegisterPage: React.FC = () => {
     
     // Real-time validation for better UX
     if (value) {
-      const error = validateField(name, value);
+      const error = validateField(name, value, newFormData);
       if (error) {
         setValidationErrors(prev => ({
           ...prev,
@@ -140,6 +142,16 @@ const RegisterPage: React.FC = () => {
     if (status === 'success') return <CheckCircle className="w-5 h-5 text-green-500" />;
     if (status === 'error') return <XCircle className="w-5 h-5 text-red-500" />;
     return null;
+  };
+
+  const handleGoogleLogin = () => {
+    clearError();
+    loginWithGoogle();
+  };
+
+  const handleFacebookLogin = () => {
+    clearError();
+    loginWithFacebook();
   };
 
   return (
@@ -266,7 +278,7 @@ const RegisterPage: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={loginWithGoogle}
+                onClick={handleGoogleLogin}
                 className="bg-white/10 border-white/20 text-white hover:bg-white/20"
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -281,7 +293,7 @@ const RegisterPage: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={loginWithFacebook}
+                onClick={handleFacebookLogin}
                 className="bg-white/10 border-white/20 text-white hover:bg-white/20"
               >
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">

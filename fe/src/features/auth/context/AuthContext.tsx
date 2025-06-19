@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { User } from '@/types';
 import { apiService } from '@/services/api';
 
@@ -16,7 +16,6 @@ interface AuthContextType extends AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   updateUser: (userData: Partial<User>) => void;
-  refreshToken: () => Promise<boolean>;
   loginWithGoogle: () => void;
   loginWithFacebook: () => void;
 }
@@ -27,27 +26,27 @@ interface RegisterData {
   password: string;
 }
 
-interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
+interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
   user: User;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 type AuthAction =
-  | { type: 'AUTH_START' }
-  | { type: 'AUTH_SUCCESS'; payload: User }
-  | { type: 'AUTH_ERROR'; payload: string }
-  | { type: 'AUTH_LOGOUT' }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_USER'; payload: User }
+  | { type: 'SET_ERROR'; payload: string }
   | { type: 'CLEAR_ERROR' }
+  | { type: 'LOGOUT' }
   | { type: 'UPDATE_USER'; payload: Partial<User> };
 
 const authReducer = (state: AuthState, action: AuthAction): AuthState => {
   switch (action.type) {
-    case 'AUTH_START':
-      return { ...state, isLoading: true, error: null };
-    case 'AUTH_SUCCESS':
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
+    case 'SET_USER':
       return {
         ...state,
         user: action.payload,
@@ -55,24 +54,21 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         isLoading: false,
         error: null,
       };
-    case 'AUTH_ERROR':
+    case 'SET_ERROR':
       return {
         ...state,
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
         error: action.payload,
+        isLoading: false,
       };
-    case 'AUTH_LOGOUT':
+    case 'CLEAR_ERROR':
+      return { ...state, error: null };
+    case 'LOGOUT':
       return {
-        ...state,
         user: null,
         isAuthenticated: false,
         isLoading: false,
         error: null,
       };
-    case 'CLEAR_ERROR':
-      return { ...state, error: null };
     case 'UPDATE_USER':
       return {
         ...state,
@@ -91,131 +87,131 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     error: null,
   });
 
+  // Initialize auth state
   useEffect(() => {
-    checkAuthStatus();
+    initializeAuth();
   }, []);
 
-  const checkAuthStatus = async () => {
+  const initializeAuth = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        dispatch({ type: 'AUTH_LOGOUT' });
+        dispatch({ type: 'LOGOUT' });
         return;
       }
 
-      // Sử dụng endpoint /auth/me thay vì /users/profile
       const response = await apiService.get<User>('/auth/me');
-      dispatch({ type: 'AUTH_SUCCESS', payload: response.data });
-    } catch (error: any) {
-      // Nếu token expired, thử refresh
-      const success = await refreshToken();
-      if (!success) {
-        dispatch({ type: 'AUTH_LOGOUT' });
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
+      dispatch({ type: 'SET_USER', payload: response.data });
+    } catch (error) {
+      console.log(error)
+      try {
+        await refreshToken();
+        const response = await apiService.get<User>('/auth/me');
+        dispatch({ type: 'SET_USER', payload: response.data });
+      } catch (refreshError) {
+        handleLogout();
+        console.error("Error while refreshing:", refreshError);
       }
     }
+  }, []);
+
+  const refreshToken = async (): Promise<void> => {
+    const refreshTokenValue = localStorage.getItem('refreshToken');
+    if (!refreshTokenValue) {
+      throw new Error('No refresh token');
+    }
+
+    const response = await apiService.post<{ accessToken: string; refreshToken: string }>('/auth/refresh-token', {
+      refreshToken: refreshTokenValue
+    });
+
+    const { accessToken, refreshToken: newRefreshToken } = response.data;
+    localStorage.setItem('token', accessToken);
+    localStorage.setItem('refreshToken', newRefreshToken);
   };
 
-  const login = async (identifier: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
     try {
-      dispatch({ type: 'AUTH_START' });
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'CLEAR_ERROR' });
       
-      // Sử dụng đúng format của backend (identifier thay vì email)
-      const response = await apiService.post<LoginResponse>('/auth/login', { 
+      const response = await apiService.post<AuthResponse>('/auth/login', { 
         identifier, 
         password 
       });
 
-      const { access_token, refresh_token, user } = response.data;
+      const { accessToken, refreshToken, user } = response.data;
       
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('refreshToken', refresh_token);
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
       
-      dispatch({ type: 'AUTH_SUCCESS', payload: user });
-    } catch (error: any) {
+      dispatch({ type: 'SET_USER', payload: user });
+    } 
+    catch (error: any) {
       const errorMessage = error.response?.data?.message || 
                           error.response?.data?.error || 
                           'Login failed';
-      dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
       throw error;
     }
-  };
+  }, []);
 
-  const register = async (userData: RegisterData) => {
+  const register = useCallback(async (userData: RegisterData) => {
     try {
-      dispatch({ type: 'AUTH_START' });
+      dispatch({ type: 'SET_LOADING', payload: true });
+      dispatch({ type: 'CLEAR_ERROR' });
       
-      const response = await apiService.post<LoginResponse>('/auth/register', userData);
+      const response = await apiService.post<AuthResponse>('/auth/register', userData);
 
-      const { access_token, refresh_token, user } = response.data;
+      const { accessToken, refreshToken, user } = response.data;
       
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('refreshToken', refresh_token);
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
       
-      dispatch({ type: 'AUTH_SUCCESS', payload: user });
+      dispatch({ type: 'SET_USER', payload: user });
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 
                           error.response?.data?.error || 
                           'Registration failed';
-      dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
       throw error;
     }
-  };
+  }, []);
 
-  const refreshToken = async (): Promise<boolean> => {
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    dispatch({ type: 'LOGOUT' });
+  }, []);
+
+  const logout = useCallback(async () => {
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) return false;
-
-      const response = await apiService.post<{ access_token: string; refresh_token: string }>('/auth/refresh-token', {
-        refreshToken
-      });
-
-      const { access_token, refresh_token } = response.data;
-      
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('refreshToken', refresh_token);
-      
-      return true;
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      return false;
-    }
-  };
-
-  const logout = async () => {
-    try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (refreshToken) {
-        await apiService.post('/auth/logout', { refreshToken });
+      const refreshTokenValue = localStorage.getItem('refreshToken');
+      if (refreshTokenValue) {
+        await apiService.post('/auth/logout', { refreshToken: refreshTokenValue });
       }
     } catch (error) {
       console.error('Logout API call failed:', error);
     } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      dispatch({ type: 'AUTH_LOGOUT' });
+      handleLogout();
     }
-  };
+  }, [handleLogout]);
 
-  const loginWithGoogle = () => {
-    // Redirect to Google OAuth
+  const loginWithGoogle = useCallback(() => {
     window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/google`;
-  };
+  }, []);
 
-  const loginWithFacebook = () => {
-    // Redirect to Facebook OAuth
+  const loginWithFacebook = useCallback(() => {
     window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/facebook`;
-  };
+  }, []);
 
-  const clearError = () => {
+  const clearError = useCallback(() => {
     dispatch({ type: 'CLEAR_ERROR' });
-  };
+  }, []);
 
-  const updateUser = (userData: Partial<User>) => {
+  const updateUser = useCallback((userData: Partial<User>) => {
     dispatch({ type: 'UPDATE_USER', payload: userData });
-  };
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -226,7 +222,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         clearError,
         updateUser,
-        refreshToken,
         loginWithGoogle,
         loginWithFacebook,
       }}

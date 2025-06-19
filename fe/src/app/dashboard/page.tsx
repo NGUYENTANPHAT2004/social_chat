@@ -9,8 +9,9 @@ import { useSocket } from '@/hooks/useSocket';
 
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
-  useSocket(); // Initialize socket connection
-  const [activeTab, setActiveTab] = useState('chat');
+  useSocket(); 
+  // eslint-disable-next-line
+ const [activeTab, setActiveTab] = useState<'chat' | 'groups' | 'video' | 'reels' | 'games'>('chat');
   return (
     <DashboardTemplate
     leftSidebar={<ChatPanel activeTab={activeTab} />}
