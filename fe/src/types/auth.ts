@@ -1,3 +1,5 @@
+import { User } from "./user";
+
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
@@ -6,7 +8,7 @@ export interface AuthState {
 }
 
 export interface LoginData {
-  identifier: string; // email or username
+  identifier: string;
   password: string;
   rememberMe?: boolean;
 }

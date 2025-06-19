@@ -1,17 +1,19 @@
+import { MessageStatus, MessageType } from "./enums";
+import { UserBasic } from "./user";
+
 export interface Message {
   _id: string;
-  content: string;
-  type: 'text' | 'image' | 'video' | 'audio' | 'file' | 'gift' | 'system';
-  sender: UserBasic;
+  sender: string;
+  recipient: string;
   conversation: string;
-  replyTo?: Message;
-  attachments?: MessageAttachment[];
-  metadata?: MessageMetadata;
-  isEdited: boolean;
-  readBy: MessageReadStatus[];
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string;
+  content: string;
+  type: MessageType;
+  status: MessageStatus;
+  image: string;
+  metadata: Record<string, unknown>;
+  readAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface MessageAttachment {
@@ -31,7 +33,7 @@ export interface MessageMetadata {
   giftImage?: string;
   giftValue?: number;
   systemType?: 'user_joined' | 'user_left' | 'room_created' | 'settings_changed';
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface MessageReadStatus {
@@ -49,8 +51,6 @@ export interface Conversation {
   isMuted: boolean;
   createdAt: string;
   updatedAt: string;
-  
-  // For group/room conversations
   name?: string;
   avatar?: string;
   description?: string;
@@ -67,7 +67,7 @@ export interface SendMessageDto {
   attachments?: File[];
   metadata?: {
     giftId?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 

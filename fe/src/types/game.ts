@@ -1,25 +1,36 @@
+import { GameResult, GameStatus, GameType } from "./enums";
+
 export interface Game {
   _id: string;
   name: string;
   description: string;
-  type: 'casino' | 'skill' | 'lottery';
+  type: GameType;
+  status: GameStatus;
+  image: string;
   minBet: number;
   maxBet: number;
-  isActive: boolean;
-  players: number;
-  rules: any;
-  createdAt: string;
-  updatedAt: string;
+  winRate: number;
+  multiplier: number;
+  config: Record<string, unknown>;
+  playCount: number;
+  totalKCWon: number;
+  totalKCBet: number;
+  totalWinners: number;
+  totalLosers: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export interface GameSession {
+export interface GamePlay {
   _id: string;
-  gameId: string;
-  playerId: string;
-  bet: number;
-  result?: any;
-  winAmount?: number;
-  status: 'active' | 'completed' | 'cancelled';
-  startedAt: string;
-  completedAt?: string;
+  player: string;
+  game: string;
+  betAmount: number;
+  result: GameResult;
+  kcAmount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  gameData: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
 }

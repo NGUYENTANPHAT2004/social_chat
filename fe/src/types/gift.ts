@@ -1,24 +1,32 @@
-export interface Gift {
-  _id: string;
-  name: string;
-  image: string;
-  value: number;
-  category: string;
-  isActive: boolean;
-  animation?: string;
-  sound?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { NotificationStatus, NotificationType } from "./enums";
 
 export interface GiftTransaction {
   _id: string;
-  giftId: string;
-  senderId: string;
-  recipientId: string;
-  roomId?: string;
-  conversationId?: string;
-  value: number;
-  message?: string;
-  createdAt: string;
+  gift: string;
+  sender: string;
+  recipient: string;
+  quantity: number;
+  totalPrice: number;
+  message: string;
+  room?: string;
+  transaction?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Notification {
+  _id: string;
+  recipient: string;
+  sender?: string;
+  type: NotificationType;
+  title: string;
+  content: string;
+  link: string;
+  image: string;
+  status: NotificationStatus;
+  data: Record<string, unknown>;
+  emailSent: boolean;
+  pushSent: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }

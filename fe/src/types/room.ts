@@ -1,25 +1,4 @@
-export interface Room {
-  _id: string;
-  name: string;
-  description?: string;
-  type: 'public' | 'private' | 'password';
-  password?: string;
-  owner: UserBasic;
-  tags: string[];
-  coverImage?: string;
-  backgroundImage?: string;
-  viewers: number;
-  maxViewers: number;
-  status: 'live' | 'inactive';
-  streamKey?: string;
-  streamUrl?: string;
-  settings: RoomSettings;
-  followers: string[];
-  members: string[];
-  createdAt: string;
-  updatedAt: string;
-  lastStreamStartTime?: string;
-}
+import { RoomStatus, RoomType } from "./enums";
 
 export interface RoomSettings {
   allowChat: boolean;
@@ -29,6 +8,28 @@ export interface RoomSettings {
   slowModeInterval: number;
   followersOnly: boolean;
   minAgeRequired: number;
+}
+
+export interface Room {
+  _id: string;
+  name: string;
+  description: string;
+  owner: string;
+  type: RoomType;
+  status: RoomStatus;
+  coverImage: string;
+  backgroundImage: string;
+  members: string[];
+  currentViewers: number;
+  followers: number;
+  password?: string;
+  isLive: boolean;
+  totalKC: number;
+  tags: string[];
+  settings: RoomSettings;
+  createdAt: Date;
+  updatedAt: Date;
+  lastStreamStartTime?: Date;
 }
 
 export interface RoomMember {

@@ -1,4 +1,5 @@
-// src/types/api.ts
+import { User } from "./user";
+
 export interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -9,19 +10,19 @@ export interface ApiResponse<T> {
 
 export interface PaginatedResponse<T> {
   items: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
+  total: number;
+  page: number;
+  limit: number;
+  hasMore?: boolean;
 }
 
-export interface ApiError {
-  message: string;
-  code?: string;
-  statusCode?: number;
-  details?: any;
+export interface LoginResponse {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface RefreshTokenResponse {
+  accessToken: string;
+  refreshToken: string;
 }

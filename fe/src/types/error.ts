@@ -2,14 +2,14 @@ export interface ErrorResponse {
   message: string;
   code?: string;
   statusCode?: number;
-  details?: any;
+  details?: unknown;
   timestamp?: string;
 }
 
 export interface ValidationError {
   field: string;
   message: string;
-  value?: any;
+  value?: unknown;
 }
 
 export interface FormError {
