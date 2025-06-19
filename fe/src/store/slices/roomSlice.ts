@@ -1,97 +1,140 @@
+// src/store/slices/roomSlice.ts
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { RoomState, Room, UserBasic, CreateRoomDto, UpdateRoomDto, ApiResponse, PaginatedResponse } from '@/types';
-import { API_ENDPOINTS } from '@/constants';
-import api from '@/services/api';
+import { RoomService, Room, CreateRoomDto, UpdateRoomDto, RoomMember, RoomQueryParams } from '@/services/room.service';
+import { PaginatedResponse } from '@/types';
 
-// Define RoomViewer interface
-interface RoomViewer extends UserBasic {
-  roomId: string;
+export interface RoomState {
+  // Room lists
+  rooms: Room[];
+  trendingRooms: Room[];
+  myRooms: Room[];
+  
+  // Current room details
+  currentRoom: Room | null;
+  roomMembers: RoomMember[];
+  
+  // UI state
+  loading: boolean;
+  error: string | null;
+  
+  // Pagination
+  pagination: {
+    rooms: {
+      page: number;
+      limit: number;
+      total: number;
+      hasMore: boolean;
+    };
+    trending: {
+      page: number;
+      limit: number;
+      total: number;
+      hasMore: boolean;
+    };
+    members: {
+      page: number;
+      limit: number;
+      total: number;
+      hasMore: boolean;
+    };
+  };
+  
+  // Filters
+  filters: {
+    search: string;
+    type: 'all' | 'public' | 'private' | 'password';
+    status: 'all' | 'live' | 'inactive';
+    tags: string[];
+  };
+  
+  // Streaming state
+  streaming: {
+    isStreaming: boolean;
+    streamUrl: string | null;
+    streamKey: string | null;
+    viewerCount: number;
+  };
 }
 
-// Extend Room interface to include streaming properties
-interface ExtendedRoom extends Room {
-  status: 'live' | 'inactive';
-  streamKey: string;
-  viewers: number;
-}
-
-// Update RoomState interface
-interface ExtendedRoomState extends Omit<RoomState, 'rooms' | 'myRooms' | 'liveRooms' | 'currentRoom'> {
-  rooms: ExtendedRoom[];
-  myRooms: ExtendedRoom[];
-  liveRooms: ExtendedRoom[];
-  currentRoom: ExtendedRoom | null;
-}
-
-const initialState: ExtendedRoomState = {
+const initialState: RoomState = {
   rooms: [],
+  trendingRooms: [],
   myRooms: [],
-  liveRooms: [],
   currentRoom: null,
-  viewers: [],
+  roomMembers: [],
   loading: false,
   error: null,
-  streamUrl: null,
+  pagination: {
+    rooms: { page: 1, limit: 20, total: 0, hasMore: true },
+    trending: { page: 1, limit: 20, total: 0, hasMore: true },
+    members: { page: 1, limit: 20, total: 0, hasMore: true },
+  },
+  filters: {
+    search: '',
+    type: 'all',
+    status: 'all',
+    tags: [],
+  },
+  streaming: {
+    isStreaming: false,
+    streamUrl: null,
+    streamKey: null,
+    viewerCount: 0,
+  },
 };
 
 // Async thunks
-export const fetchAllRooms = createAsyncThunk(
-  'room/fetchAllRooms',
-  async (_, { rejectWithValue }) => {
+export const fetchRooms = createAsyncThunk(
+  'room/fetchRooms',
+  async (params?: RoomQueryParams, { getState, rejectWithValue }) => {
     try {
-      const response = await api.get<ApiResponse<PaginatedResponse<ExtendedRoom>>>(API_ENDPOINTS.ROOMS);
-      const rooms = response.data.data.items.map(room => ({
-        ...room,
-        status: room.status as 'live' | 'inactive'
-      }));
-      return rooms;
+      const state = getState() as { room: RoomState };
+      const { filters, pagination } = state.room;
+      
+      const queryParams: RoomQueryParams = {
+        page: pagination.rooms.page,
+        limit: pagination.rooms.limit,
+        search: filters.search || undefined,
+        type: filters.type !== 'all' ? filters.type : undefined,
+        status: filters.status !== 'all' ? filters.status : undefined,
+        tags: filters.tags.length > 0 ? filters.tags : undefined,
+        ...params,
+      };
+      
+      const response = await RoomService.getRooms(queryParams);
+      return response;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch rooms');
     }
   }
 );
 
-export const fetchLiveRooms = createAsyncThunk(
-  'room/fetchLiveRooms',
-  async (_, { rejectWithValue }) => {
+export const fetchTrendingRooms = createAsyncThunk(
+  'room/fetchTrendingRooms',
+  async (params?: RoomQueryParams, { getState, rejectWithValue }) => {
     try {
-      const response = await api.get<ApiResponse<PaginatedResponse<ExtendedRoom>>>(API_ENDPOINTS.LIVE_ROOMS);
-      const rooms = response.data.data.items.map(room => ({
-        ...room,
-        status: room.status as 'live' | 'inactive'
-      }));
-      return rooms;
+      const state = getState() as { room: RoomState };
+      const { pagination } = state.room;
+      
+      const queryParams: RoomQueryParams = {
+        page: pagination.trending.page,
+        limit: pagination.trending.limit,
+        ...params,
+      };
+      
+      const response = await RoomService.getTrendingRooms(queryParams);
+      return response;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch live rooms');
-    }
-  }
-);
-
-export const fetchMyRooms = createAsyncThunk(
-  'room/fetchMyRooms',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await api.get<ApiResponse<PaginatedResponse<ExtendedRoom>>>(API_ENDPOINTS.MY_ROOMS);
-      const rooms = response.data.data.items.map(room => ({
-        ...room,
-        status: room.status as 'live' | 'inactive'
-      }));
-      return rooms;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch your rooms');
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch trending rooms');
     }
   }
 );
 
 export const fetchRoomById = createAsyncThunk(
   'room/fetchRoomById',
-  async (roomId: string, { rejectWithValue }) => {
+  async (id: string, { rejectWithValue }) => {
     try {
-      const response = await api.get<ApiResponse<ExtendedRoom>>(API_ENDPOINTS.ROOM_BY_ID(roomId));
-      const room = {
-        ...response.data.data,
-        status: response.data.data.status as 'live' | 'inactive'
-      };
+      const room = await RoomService.getRoomById(id);
       return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch room');
@@ -101,13 +144,9 @@ export const fetchRoomById = createAsyncThunk(
 
 export const createRoom = createAsyncThunk(
   'room/createRoom',
-  async (roomData: CreateRoomDto, { rejectWithValue }) => {
+  async (data: CreateRoomDto, { rejectWithValue }) => {
     try {
-      const response = await api.post<ApiResponse<ExtendedRoom>>(API_ENDPOINTS.ROOMS, roomData);
-      const room = {
-        ...response.data.data,
-        status: response.data.data.status as 'live' | 'inactive'
-      };
+      const room = await RoomService.createRoom(data);
       return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to create room');
@@ -117,13 +156,9 @@ export const createRoom = createAsyncThunk(
 
 export const updateRoom = createAsyncThunk(
   'room/updateRoom',
-  async ({ roomId, roomData }: { roomId: string; roomData: UpdateRoomDto }, { rejectWithValue }) => {
+  async ({ id, data }: { id: string; data: UpdateRoomDto }, { rejectWithValue }) => {
     try {
-      const response = await api.patch<ApiResponse<ExtendedRoom>>(API_ENDPOINTS.ROOM_BY_ID(roomId), roomData);
-      const room = {
-        ...response.data.data,
-        status: response.data.data.status as 'live' | 'inactive'
-      };
+      const room = await RoomService.updateRoom(id, data);
       return room;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to update room');
@@ -133,26 +168,88 @@ export const updateRoom = createAsyncThunk(
 
 export const deleteRoom = createAsyncThunk(
   'room/deleteRoom',
-  async (roomId: string, { rejectWithValue }) => {
+  async (id: string, { rejectWithValue }) => {
     try {
-      await api.delete(API_ENDPOINTS.ROOM_BY_ID(roomId));
-      return roomId;
+      await RoomService.deleteRoom(id);
+      return id;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to delete room');
     }
   }
 );
 
+export const joinRoom = createAsyncThunk(
+  'room/joinRoom',
+  async ({ id, password }: { id: string; password?: string }, { rejectWithValue }) => {
+    try {
+      const result = await RoomService.joinRoom(id, password);
+      return result;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to join room');
+    }
+  }
+);
+
+export const leaveRoom = createAsyncThunk(
+  'room/leaveRoom',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      await RoomService.leaveRoom(id);
+      return id;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to leave room');
+    }
+  }
+);
+
+export const followRoom = createAsyncThunk(
+  'room/followRoom',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      await RoomService.followRoom(id);
+      return id;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to follow room');
+    }
+  }
+);
+
+export const unfollowRoom = createAsyncThunk(
+  'room/unfollowRoom',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      await RoomService.unfollowRoom(id);
+      return id;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to unfollow room');
+    }
+  }
+);
+
+export const fetchRoomMembers = createAsyncThunk(
+  'room/fetchRoomMembers',
+  async (id: string, { getState, rejectWithValue }) => {
+    try {
+      const state = getState() as { room: RoomState };
+      const { pagination } = state.room;
+      
+      const response = await RoomService.getRoomMembers(id, {
+        page: pagination.members.page,
+        limit: pagination.members.limit,
+      });
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch room members');
+    }
+  }
+);
+
 export const startStream = createAsyncThunk(
   'room/startStream',
-  async (roomId: string, { rejectWithValue }) => {
+  async (id: string, { rejectWithValue }) => {
     try {
-      const response = await api.post<ApiResponse<ExtendedRoom>>(`${API_ENDPOINTS.ROOM_BY_ID(roomId)}/start-stream`);
-      const room = {
-        ...response.data.data,
-        status: 'live' as const
-      };
-      return room;
+      const result = await RoomService.startStream(id);
+      return { roomId: id, ...result };
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to start stream');
     }
@@ -161,335 +258,260 @@ export const startStream = createAsyncThunk(
 
 export const endStream = createAsyncThunk(
   'room/endStream',
-  async (roomId: string, { rejectWithValue }) => {
+  async (id: string, { rejectWithValue }) => {
     try {
-      const response = await api.post<ApiResponse<ExtendedRoom>>(`${API_ENDPOINTS.ROOM_BY_ID(roomId)}/end-stream`);
-      const room = {
-        ...response.data.data,
-        status: 'inactive' as const
-      };
-      return room;
+      await RoomService.endStream(id);
+      return id;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to end stream');
     }
   }
 );
 
+// Room slice
 const roomSlice = createSlice({
   name: 'room',
   initialState,
   reducers: {
-    setCurrentRoom: (state, action: PayloadAction<ExtendedRoom>) => {
+    clearError: (state) => {
+      state.error = null;
+    },
+    
+    setFilters: (state, action: PayloadAction<Partial<RoomState['filters']>>) => {
+      state.filters = { ...state.filters, ...action.payload };
+      // Reset pagination when filters change
+      state.pagination.rooms.page = 1;
+    },
+    
+    clearFilters: (state) => {
+      state.filters = initialState.filters;
+      state.pagination.rooms.page = 1;
+    },
+    
+    setCurrentRoom: (state, action: PayloadAction<Room | null>) => {
       state.currentRoom = action.payload;
-      
-      // Set HLS stream URL
-      if (action.payload && action.payload.status === 'live') {
-        const streamEndpoint = process.env.NEXT_PUBLIC_STREAMING_URL || 'http://localhost:5000/live';
-        state.streamUrl = `${streamEndpoint}/${action.payload.streamKey}.m3u8`;
-      } else {
-        state.streamUrl = null;
+      if (!action.payload) {
+        state.roomMembers = [];
+        state.streaming = initialState.streaming;
       }
     },
     
-    clearCurrentRoom: (state) => {
-      state.currentRoom = null;
-      state.viewers = [];
-      state.streamUrl = null;
-    },
-    
-    addViewer: (state, action: PayloadAction<RoomViewer>) => {
-      if (!state.viewers.some(viewer => viewer.id === action.payload.id)) {
-        state.viewers.push(action.payload);
-      }
+    updateRoomViewers: (state, action: PayloadAction<{ roomId: string; viewers: number }>) => {
+      const { roomId, viewers } = action.payload;
       
-      // Update viewer count in current room
-      if (state.currentRoom && state.currentRoom.id === action.payload.roomId) {
-        state.currentRoom.viewers = state.viewers.length;
-      }
-    },
-    
-    removeViewer: (state, action: PayloadAction<string>) => {
-      state.viewers = state.viewers.filter(viewer => viewer.id !== action.payload);
-      
-      // Update viewer count in current room
-      if (state.currentRoom) {
-        state.currentRoom.viewers = state.viewers.length;
-      }
-    },
-    
-    updateViewerCount: (state, action: PayloadAction<{roomId: string; count: number}>) => {
-      const { roomId, count } = action.payload;
-      
-      // Update in all room lists
-      const roomIndex = state.rooms.findIndex(room => room.id === roomId);
+      // Update in rooms list
+      const roomIndex = state.rooms.findIndex(room => room._id === roomId);
       if (roomIndex !== -1) {
-        state.rooms[roomIndex].viewers = count;
+        state.rooms[roomIndex].viewers = viewers;
       }
       
-      const liveRoomIndex = state.liveRooms.findIndex(room => room.id === roomId);
-      if (liveRoomIndex !== -1) {
-        state.liveRooms[liveRoomIndex].viewers = count;
+      // Update in trending rooms
+      const trendingIndex = state.trendingRooms.findIndex(room => room._id === roomId);
+      if (trendingIndex !== -1) {
+        state.trendingRooms[trendingIndex].viewers = viewers;
       }
       
-      const myRoomIndex = state.myRooms.findIndex(room => room.id === roomId);
-      if (myRoomIndex !== -1) {
-        state.myRooms[myRoomIndex].viewers = count;
+      // Update current room
+      if (state.currentRoom && state.currentRoom._id === roomId) {
+        state.currentRoom.viewers = viewers;
+        state.streaming.viewerCount = viewers;
       }
+    },
+    
+    updateRoomStatus: (state, action: PayloadAction<{ roomId: string; status: Room['status'] }>) => {
+      const { roomId, status } = action.payload;
       
-      // Update current room if it's the same
-      if (state.currentRoom && state.currentRoom.id === roomId) {
-        state.currentRoom.viewers = count;
+      // Update in all relevant lists
+      [state.rooms, state.trendingRooms, state.myRooms].forEach(roomList => {
+        const roomIndex = roomList.findIndex(room => room._id === roomId);
+        if (roomIndex !== -1) {
+          roomList[roomIndex].status = status;
+        }
+      });
+      
+      // Update current room
+      if (state.currentRoom && state.currentRoom._id === roomId) {
+        state.currentRoom.status = status;
       }
-    }
+    },
+    
+    addUserToRoom: (state, action: PayloadAction<{ roomId: string; userId: string }>) => {
+      const { roomId, userId } = action.payload;
+      
+      if (state.currentRoom && state.currentRoom._id === roomId) {
+        if (!state.currentRoom.members.includes(userId)) {
+          state.currentRoom.members.push(userId);
+        }
+      }
+    },
+    
+    removeUserFromRoom: (state, action: PayloadAction<{ roomId: string; userId: string }>) => {
+      const { roomId, userId } = action.payload;
+      
+      if (state.currentRoom && state.currentRoom._id === roomId) {
+        state.currentRoom.members = state.currentRoom.members.filter(id => id !== userId);
+      }
+    },
   },
+  
   extraReducers: (builder) => {
     builder
-      // Fetch all rooms cases
-      .addCase(fetchAllRooms.pending, (state) => {
+      // Fetch rooms
+      .addCase(fetchRooms.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchAllRooms.fulfilled, (state, action: PayloadAction<ExtendedRoom[]>) => {
+      .addCase(fetchRooms.fulfilled, (state, action) => {
         state.loading = false;
-        state.rooms = action.payload.map(room => ({
-          ...room,
-          status: room.status as 'live' | 'inactive'
-        }));
-      })
-      .addCase(fetchAllRooms.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Fetch live rooms cases
-      .addCase(fetchLiveRooms.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchLiveRooms.fulfilled, (state, action: PayloadAction<ExtendedRoom[]>) => {
-        state.loading = false;
-        state.liveRooms = action.payload.map(room => ({
-          ...room,
-          status: room.status as 'live' | 'inactive'
-        }));
-      })
-      .addCase(fetchLiveRooms.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Fetch my rooms cases
-      .addCase(fetchMyRooms.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchMyRooms.fulfilled, (state, action: PayloadAction<ExtendedRoom[]>) => {
-        state.loading = false;
-        state.myRooms = action.payload.map(room => ({
-          ...room,
-          status: room.status as 'live' | 'inactive'
-        }));
-      })
-      .addCase(fetchMyRooms.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Fetch room by id cases
-      .addCase(fetchRoomById.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchRoomById.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
-        state.loading = false;
-        state.currentRoom = {
-          ...action.payload,
-          status: action.payload.status as 'live' | 'inactive'
-        };
+        const { items, pagination } = action.payload;
         
-        // Set HLS stream URL if room is live
-        if (action.payload && action.payload.status === 'live') {
-          const streamEndpoint = process.env.NEXT_PUBLIC_STREAMING_URL || 'http://localhost:5000/live';
-          state.streamUrl = `${streamEndpoint}/${action.payload.streamKey}.m3u8`;
+        if (state.pagination.rooms.page === 1) {
+          state.rooms = items;
         } else {
-          state.streamUrl = null;
+          state.rooms.push(...items);
         }
+        
+        state.pagination.rooms = {
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.total,
+          hasMore: pagination.page < pagination.totalPages,
+        };
       })
-      .addCase(fetchRoomById.rejected, (state, action) => {
+      .addCase(fetchRooms.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })
       
-      // Create room cases
-      .addCase(createRoom.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(createRoom.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
-        state.loading = false;
-        const newRoom = {
-          ...action.payload,
-          status: action.payload.status as 'live' | 'inactive'
+      // Fetch trending rooms
+      .addCase(fetchTrendingRooms.fulfilled, (state, action) => {
+        const { items, pagination } = action.payload;
+        
+        if (state.pagination.trending.page === 1) {
+          state.trendingRooms = items;
+        } else {
+          state.trendingRooms.push(...items);
+        }
+        
+        state.pagination.trending = {
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.total,
+          hasMore: pagination.page < pagination.totalPages,
         };
-        state.myRooms.push(newRoom);
-        state.rooms.push(newRoom);
-      })
-      .addCase(createRoom.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
       })
       
-      // Update room cases
-      .addCase(updateRoom.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(updateRoom.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
+      // Fetch room by ID
+      .addCase(fetchRoomById.fulfilled, (state, action) => {
+        state.currentRoom = action.payload;
         state.loading = false;
-        const updatedRoom = {
-          ...action.payload,
-          status: action.payload.status as 'live' | 'inactive'
-        };
+      })
+      
+      // Create room
+      .addCase(createRoom.fulfilled, (state, action) => {
+        state.rooms.unshift(action.payload);
+        state.myRooms.unshift(action.payload);
+      })
+      
+      // Update room
+      .addCase(updateRoom.fulfilled, (state, action) => {
+        const updatedRoom = action.payload;
         
-        // Update in all room lists
-        const roomIndex = state.rooms.findIndex(room => room.id === updatedRoom.id);
-        if (roomIndex !== -1) {
-          state.rooms[roomIndex] = updatedRoom;
-        }
+        // Update in all lists
+        [state.rooms, state.trendingRooms, state.myRooms].forEach(roomList => {
+          const index = roomList.findIndex(room => room._id === updatedRoom._id);
+          if (index !== -1) {
+            roomList[index] = updatedRoom;
+          }
+        });
         
-        const liveRoomIndex = state.liveRooms.findIndex(room => room.id === updatedRoom.id);
-        if (liveRoomIndex !== -1) {
-          state.liveRooms[liveRoomIndex] = updatedRoom;
-        }
-        
-        const myRoomIndex = state.myRooms.findIndex(room => room.id === updatedRoom.id);
-        if (myRoomIndex !== -1) {
-          state.myRooms[myRoomIndex] = updatedRoom;
-        }
-        
-        // Update current room if it's the same
-        if (state.currentRoom && state.currentRoom.id === updatedRoom.id) {
+        // Update current room
+        if (state.currentRoom && state.currentRoom._id === updatedRoom._id) {
           state.currentRoom = updatedRoom;
         }
       })
-      .addCase(updateRoom.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
       
-      // Delete room cases
-      .addCase(deleteRoom.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Delete room
       .addCase(deleteRoom.fulfilled, (state, action) => {
-        state.loading = false;
+        const roomId = action.payload;
         
-        // Remove from all room lists
-        state.rooms = state.rooms.filter(room => room.id !== action.payload);
-        state.liveRooms = state.liveRooms.filter(room => room.id !== action.payload);
-        state.myRooms = state.myRooms.filter(room => room.id !== action.payload);
+        state.rooms = state.rooms.filter(room => room._id !== roomId);
+        state.trendingRooms = state.trendingRooms.filter(room => room._id !== roomId);
+        state.myRooms = state.myRooms.filter(room => room._id !== roomId);
         
-        // Clear current room if it's the same
-        if (state.currentRoom && state.currentRoom.id === action.payload) {
+        if (state.currentRoom && state.currentRoom._id === roomId) {
           state.currentRoom = null;
-          state.viewers = [];
-          state.streamUrl = null;
+          state.roomMembers = [];
+          state.streaming = initialState.streaming;
         }
-      })
-      .addCase(deleteRoom.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
       })
       
-      // Start stream cases
-      .addCase(startStream.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(startStream.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
-        state.loading = false;
+      // Join room
+      .addCase(joinRoom.fulfilled, (state, action) => {
+        const { room } = action.payload;
         
-        // Update room status in all lists
-        const updateRoomStatus = (room: ExtendedRoom) => {
-          if (room.id === action.payload.id) {
-            return { ...room, status: 'live' as const };
-          }
-          return room;
-        };
-        
-        state.rooms = state.rooms.map(updateRoomStatus);
-        state.myRooms = state.myRooms.map(updateRoomStatus);
-        
-        // Add to live rooms if not already there
-        if (!state.liveRooms.some(room => room.id === action.payload.id)) {
-          state.liveRooms.push({
-            ...action.payload,
-            status: 'live' as const
-          });
-        }
-        
-        // Update current room if it's the same
-        if (state.currentRoom && state.currentRoom.id === action.payload.id) {
-          state.currentRoom = {
-            ...action.payload,
-            status: 'live' as const
-          };
-          
-          // Set HLS stream URL
-          const streamEndpoint = process.env.NEXT_PUBLIC_STREAMING_URL || 'http://localhost:5000/live';
-          state.streamUrl = `${streamEndpoint}/${action.payload.streamKey}.m3u8`;
-        }
-      })
-      .addCase(startStream.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+        // Update current room
+        state.currentRoom = room;
       })
       
-      // End stream cases
-      .addCase(endStream.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(endStream.fulfilled, (state, action: PayloadAction<ExtendedRoom>) => {
-        state.loading = false;
+      // Fetch room members
+      .addCase(fetchRoomMembers.fulfilled, (state, action) => {
+        const { items, pagination } = action.payload;
         
-        // Update room status in all lists
-        const updateRoomStatus = (room: ExtendedRoom) => {
-          if (room.id === action.payload.id) {
-            return { ...room, status: 'inactive' as const };
-          }
-          return room;
+        if (state.pagination.members.page === 1) {
+          state.roomMembers = items;
+        } else {
+          state.roomMembers.push(...items);
+        }
+        
+        state.pagination.members = {
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.total,
+          hasMore: pagination.page < pagination.totalPages,
+        };
+      })
+      
+      // Start stream
+      .addCase(startStream.fulfilled, (state, action) => {
+        const { roomId, streamUrl, streamKey } = action.payload;
+        
+        state.streaming = {
+          isStreaming: true,
+          streamUrl,
+          streamKey,
+          viewerCount: 0,
         };
         
-        state.rooms = state.rooms.map(updateRoomStatus);
-        state.myRooms = state.myRooms.map(updateRoomStatus);
-        
-        // Remove from live rooms
-        state.liveRooms = state.liveRooms.filter(room => room.id !== action.payload.id);
-        
-        // Update current room if it's the same
-        if (state.currentRoom && state.currentRoom.id === action.payload.id) {
-          state.currentRoom = {
-            ...action.payload,
-            status: 'inactive' as const
-          };
-          state.streamUrl = null;
+        // Update room status to live
+        if (state.currentRoom && state.currentRoom._id === roomId) {
+          state.currentRoom.status = 'live';
         }
       })
-      .addCase(endStream.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
+      
+      // End stream
+      .addCase(endStream.fulfilled, (state, action) => {
+        const roomId = action.payload;
+        
+        state.streaming = initialState.streaming;
+        
+        // Update room status to inactive
+        if (state.currentRoom && state.currentRoom._id === roomId) {
+          state.currentRoom.status = 'inactive';
+        }
       });
   },
 });
 
-export const { 
-  setCurrentRoom, 
-  clearCurrentRoom, 
-  addViewer, 
-  removeViewer, 
-  updateViewerCount 
+export const {
+  clearError,
+  setFilters,
+  clearFilters,
+  setCurrentRoom,
+  updateRoomViewers,
+  updateRoomStatus,
+  addUserToRoom,
+  removeUserFromRoom,
 } = roomSlice.actions;
 
 export default roomSlice.reducer;
