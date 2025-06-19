@@ -1,18 +1,21 @@
+// fe/src/features/transaction/components/TransactionHistory/TransactionHistory.tsx
+// NOTE: This component should be moved from user module to transaction module
 'use client';
 import React, { useState, useEffect } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, Calendar, Filter } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Calendar } from 'lucide-react';
 import Button from '@/components/atoms/Button/Button';
 import Badge from '@/components/atoms/Badge/Badge';
-import { useAuth } from '@/features/auth/context/AuthContext';
+import { useUser } from '@/hooks/useUserProfile';
 import { apiService } from '@/services/api';
+import { TransactionType, TransactionStatus } from '@/types/enums';
 
 interface Transaction {
   id: string;
-  type: 'DEPOSIT' | 'WITHDRAW' | 'GAME_WIN' | 'GAME_LOSE' | 'GIFT_SEND' | 'GIFT_RECEIVE';
+  type: TransactionType;
   amount: number;
   description: string;
-  status: 'pending' | 'completed' | 'failed';
-  createdAt: Date;
+  status: TransactionStatus;
+  createdAt: string;
   metadata?: any;
 }
 
@@ -29,29 +32,47 @@ interface TransactionHistoryProps {
 }
 
 const TransactionHistory: React.FC<TransactionHistoryProps> = ({ isOpen, onClose }) => {
-  const { user } = useAuth();
+  const { currentUser } = useUser();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'DEPOSIT' | 'GAME' | 'GIFT'>('all');
+  const [filter, setFilter] = useState<'all' | TransactionType>('all');
   const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
-      loadTransactions();
+      loadTransactions(true);
     }
   }, [isOpen, filter]);
 
-  const loadTransactions = async () => {
+  const loadTransactions = async (resetPage = true) => {
     setLoading(true);
     try {
-      const response = await apiService.get<TransactionResponse>('/transactions', {
-        params: {
-          type: filter !== 'all' ? filter : undefined,
-          page,
-          limit: 20,
-        },
-      });
-      setTransactions(response.data.transactions || []);
+      const currentPage = resetPage ? 1 : page;
+      const params: any = {
+        page: currentPage,
+        limit: 20,
+      };
+
+      if (filter !== 'all') {
+        params.type = filter;
+      }
+
+      const response = await apiService.get<TransactionResponse>('/transactions', { params });
+      const newTransactions = response.data.transactions || [];
+
+      if (resetPage) {
+        setTransactions(newTransactions);
+        setPage(1);
+      } else {
+        setTransactions(prev => [...prev, ...newTransactions]);
+      }
+
+      setHasMore(newTransactions.length === 20);
+      
+      if (!resetPage) {
+        setPage(prev => prev + 1);
+      }
     } catch (error) {
       console.error('Failed to load transactions:', error);
     } finally {
@@ -59,52 +80,87 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({ isOpen, onClose
     }
   };
 
-  const getTransactionIcon = (type: string) => {
+  const loadMore = () => {
+    if (!loading && hasMore) {
+      setPage(prev => prev + 1);
+      loadTransactions(false);
+    }
+  };
+
+  const getTransactionIcon = (type: TransactionType) => {
     switch (type) {
-      case 'DEPOSIT':
+      case TransactionType.DEPOSIT:
+      case TransactionType.REWARD:
         return <ArrowDownCircle className="w-5 h-5 text-green-500" />;
-      case 'WITHDRAW':
+      case TransactionType.WITHDRAW:
+      case TransactionType.PURCHASE:
         return <ArrowUpCircle className="w-5 h-5 text-red-500" />;
-      case 'GAME_WIN':
-        return <ArrowDownCircle className="w-5 h-5 text-green-500" />;
-      case 'GAME_LOSE':
-        return <ArrowUpCircle className="w-5 h-5 text-red-500" />;
-      case 'GIFT_SEND':
+      case TransactionType.GIFT:
         return <ArrowUpCircle className="w-5 h-5 text-purple-500" />;
-      case 'GIFT_RECEIVE':
-        return <ArrowDownCircle className="w-5 h-5 text-purple-500" />;
+      case TransactionType.TRANSFER:
+        return <ArrowDownCircle className="w-5 h-5 text-blue-500" />;
       default:
         return <ArrowDownCircle className="w-5 h-5 text-gray-500" />;
     }
   };
 
-  const getTransactionColor = (type: string) => {
+  const getTransactionColor = (type: TransactionType) => {
     switch (type) {
-      case 'DEPOSIT':
-      case 'GAME_WIN':
-      case 'GIFT_RECEIVE':
+      case TransactionType.DEPOSIT:
+      case TransactionType.REWARD:
+      case TransactionType.REFUND:
         return 'text-green-600';
-      case 'WITHDRAW':
-      case 'GAME_LOSE':
-      case 'GIFT_SEND':
+      case TransactionType.WITHDRAW:
+      case TransactionType.PURCHASE:
+      case TransactionType.GIFT:
         return 'text-red-600';
+      case TransactionType.TRANSFER:
+        return 'text-blue-600';
       default:
         return 'text-gray-600';
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getAmountPrefix = (type: TransactionType): string => {
+    switch (type) {
+      case TransactionType.DEPOSIT:
+      case TransactionType.REWARD:
+      case TransactionType.REFUND:
+        return '+';
+      case TransactionType.WITHDRAW:
+      case TransactionType.PURCHASE:
+      case TransactionType.GIFT:
+        return '-';
+      default:
+        return '';
+    }
+  };
+
+  const getStatusBadge = (status: TransactionStatus) => {
     switch (status) {
-      case 'completed':
+      case TransactionStatus.COMPLETED:
         return <Badge variant="success" size="sm">Completed</Badge>;
-      case 'pending':
+      case TransactionStatus.PENDING:
         return <Badge variant="warning" size="sm">Pending</Badge>;
-      case 'failed':
+      case TransactionStatus.FAILED:
         return <Badge variant="danger" size="sm">Failed</Badge>;
+      case TransactionStatus.CANCELLED:
+        return <Badge variant="default" size="sm">Cancelled</Badge>;
+      case TransactionStatus.REFUNDED:
+        return <Badge variant="info" size="sm">Refunded</Badge>;
       default:
         return <Badge variant="default" size="sm">{status}</Badge>;
     }
   };
+
+  const filterOptions = [
+    { key: 'all', label: 'All' },
+    { key: TransactionType.DEPOSIT, label: 'Deposits' },
+    { key: TransactionType.WITHDRAW, label: 'Withdrawals' },
+    { key: TransactionType.GIFT, label: 'Gifts' },
+    { key: TransactionType.REWARD, label: 'Rewards' },
+    { key: TransactionType.PURCHASE, label: 'Purchases' },
+  ];
 
   if (!isOpen) return null;
 
@@ -123,23 +179,18 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({ isOpen, onClose
           {/* Balance */}
           <div className="bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl p-4 text-white text-center">
             <h3 className="text-sm opacity-90">Current Balance</h3>
-            <p className="text-2xl font-bold">{user?.balance} KC</p>
+            <p className="text-2xl font-bold">{currentUser?.kcBalance || 0} KC</p>
           </div>
         </div>
 
         {/* Filters */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex space-x-2 overflow-x-auto">
-            {[
-              { key: 'all', label: 'All' },
-              { key: 'DEPOSIT', label: 'Deposits' },
-              { key: 'GAME', label: 'Games' },
-              { key: 'GIFT', label: 'Gifts' },
-            ].map((filterOption) => (
+            {filterOptions.map((filterOption) => (
               <button
                 key={filterOption.key}
                 onClick={() => setFilter(filterOption.key as any)}
-                className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
+                className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
                   filter === filterOption.key
                     ? 'bg-purple-100 text-purple-700'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -153,7 +204,7 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({ isOpen, onClose
 
         {/* Transaction List */}
         <div className="flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
-          {loading ? (
+          {loading && transactions.length === 0 ? (
             <div className="p-4">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="p-4 border-b border-gray-100 animate-pulse">
@@ -175,13 +226,16 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({ isOpen, onClose
                 No transactions
               </h3>
               <p className="text-gray-500">
-                Your transaction history will appear here.
+                {filter === 'all' 
+                  ? 'Your transaction history will appear here.'
+                  : `No ${filter.toLowerCase()} transactions found.`
+                }
               </p>
             </div>
           ) : (
             <div>
               {transactions.map((transaction) => (
-                <div key={transaction.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
+                <div key={transaction.id} className="p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       {getTransactionIcon(transaction.type)}
@@ -191,21 +245,43 @@ const TransactionHistory: React.FC<TransactionHistoryProps> = ({ isOpen, onClose
                         </h3>
                         <div className="flex items-center space-x-2">
                           <p className="text-sm text-gray-500">
-                            {new Date(transaction.createdAt).toLocaleDateString()}
+                            {new Date(transaction.createdAt).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
                           </p>
                           {getStatusBadge(transaction.status)}
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`font-bold ${getTransactionColor(transaction.type)}`}>
-                        {transaction.type.includes('SEND') || transaction.type.includes('LOSE') || transaction.type === 'WITHDRAW' ? '-' : '+'}
-                        {transaction.amount} KC
+                      <p className={`font-bold text-lg ${getTransactionColor(transaction.type)}`}>
+                        {getAmountPrefix(transaction.type)}{transaction.amount} KC
+                      </p>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">
+                        {transaction.type.replace('_', ' ')}
                       </p>
                     </div>
                   </div>
                 </div>
               ))}
+
+              {/* Load More Button */}
+              {hasMore && (
+                <div className="p-4 text-center">
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={loadMore}
+                    loading={loading}
+                  >
+                    Load More
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

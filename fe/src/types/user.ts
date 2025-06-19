@@ -1,4 +1,4 @@
-// src/types/user.ts
+// fe/src/types/user.ts - Optimized and Simplified
 export enum UserStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
@@ -32,8 +32,16 @@ export interface PushSettings {
   badge: boolean;
 }
 
+export interface UserStats {
+  gamesPlayed: number;
+  gamesWon: number;
+  totalEarnings: number;
+  followersCount: number;
+  followingCount: number;
+}
+
 export interface User {
-  id: string;
+  id: string; // Mapped from _id
   username: string;
   email: string;
   avatar: string;
@@ -47,34 +55,23 @@ export interface User {
   following: string[];
   followers: string[];
   trustScore: number;
+  refreshTokens: Array<{ token: string; expires: Date }>;
   createdAt: Date;
   updatedAt: Date;
-  
-  // Computed properties
   isOnline?: boolean;
   lastSeen?: Date;
-  
-  // Stats (computed from other modules)
-  stats?: {
-    gamesPlayed: number;
-    gamesWon: number;
-    totalEarnings: number;
-    followersCount: number;
-    followingCount: number;
-  };
+  stats?: UserStats;
 }
 
 export interface UserBasic {
   id: string;
   username: string;
   avatar: string;
+  displayName?: string;
   isOnline?: boolean;
-  profile: {
-    displayName: string;
-  };
 }
 
-// DTOs for API requests
+// API DTOs
 export interface UpdateProfileDto {
   displayName?: string;
   bio?: string;
@@ -95,29 +92,32 @@ export interface UpdateSettingsDto extends Partial<UserSettings> {}
 export interface UpdatePushSettingsDto extends Partial<PushSettings> {}
 
 // API Response types
-export interface UsersListResponse {
+export interface UsersResponse {
   users: User[];
   total: number;
   page: number;
   limit: number;
 }
 
-export interface FollowersResponse {
-  followers: UserBasic[];
+export interface FollowResponse {
+  users: UserBasic[];
   total: number;
   page: number;
   limit: number;
 }
 
-export interface FollowingResponse {
-  following: UserBasic[];
-  total: number;
-  page: number;
-  limit: number;
+// User State for Redux
+export interface UserState {
+  currentUser: User | null;
+  users: { [id: string]: User };
+  followers: { [userId: string]: UserBasic[] };
+  following: { [userId: string]: UserBasic[] };
+  loading: boolean;
+  error: string | null;
 }
 
-// Filter types for user list
-export interface UserListFilter {
+// API Filters
+export interface UserListParams {
   page?: number;
   limit?: number;
   status?: UserStatus;

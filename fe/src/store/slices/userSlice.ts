@@ -1,32 +1,26 @@
-// store/slices/userSlice.ts
+// fe/src/store/slices/userSlice.ts - Simplified and Optimized
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { UserState, UserProfile, Transaction, Notification, ApiResponse, PaginatedResponse } from '@/types';
-import { API_ENDPOINTS } from '@/constants';
-import api from '@/services/api';
+import { User, UserState, UpdateProfileDto, UpdateSettingsDto, FollowResponse } from '@/types/user';
+import { apiService } from '@/services/api';
 
 const initialState: UserState = {
-  profile: null,
-  otherProfiles: {},
-  friends: [],
-  friendRequests: {
-    incoming: [],
-    outgoing: [],
-  },
-  transactions: [],
-  notifications: [],
+  currentUser: null,
+  users: {},
+  followers: {},
+  following: {},
   loading: false,
   error: null,
 };
 
-// Async thunks
-export const fetchUserProfile = createAsyncThunk(
-  'user/fetchUserProfile',
+// Async thunks - Simplified
+export const fetchCurrentUser = createAsyncThunk(
+  'user/fetchCurrentUser',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get<ApiResponse<UserProfile>>(API_ENDPOINTS.USER_PROFILE);
-      return response.data.data;
+      const response = await apiService.get<User>('/users/me/profile');
+      return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch user profile');
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch user');
     }
   }
 );
@@ -35,22 +29,34 @@ export const fetchUserById = createAsyncThunk(
   'user/fetchUserById',
   async (userId: string, { rejectWithValue }) => {
     try {
-      const response = await api.get<ApiResponse<UserProfile>>(API_ENDPOINTS.USER_BY_ID(userId));
-      return { userId, user: response.data.data };
+      const response = await apiService.get<User>(`/users/${userId}`);
+      return response.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch user');
     }
   }
 );
 
-export const updateUserProfile = createAsyncThunk(
-  'user/updateUserProfile',
-  async (profileData: Partial<UserProfile>, { rejectWithValue }) => {
+export const updateProfile = createAsyncThunk(
+  'user/updateProfile',
+  async (profileData: UpdateProfileDto, { rejectWithValue }) => {
     try {
-      const response = await api.patch<ApiResponse<UserProfile>>(API_ENDPOINTS.USER_PROFILE, profileData);
-      return response.data.data;
+      const response = await apiService.patch<User>('/users/me/profile', profileData);
+      return response.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to update profile');
+    }
+  }
+);
+
+export const updateSettings = createAsyncThunk(
+  'user/updateSettings',
+  async (settings: UpdateSettingsDto, { rejectWithValue }) => {
+    try {
+      const response = await apiService.patch<User>('/users/me/settings', settings);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to update settings');
     }
   }
 );
@@ -62,96 +68,78 @@ export const uploadAvatar = createAsyncThunk(
       const formData = new FormData();
       formData.append('avatar', file);
       
-      const response = await api.post<ApiResponse<{ avatar: string; url: string }>>(
-        `${API_ENDPOINTS.USER_PROFILE}/avatar`,
-        formData
-      );
-      
-      return response.data.data;
+      const response = await apiService.patch<User>('/users/me/avatar', formData);
+      return response.data;
+
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to upload avatar');
     }
   }
 );
 
-export const fetchTransactions = createAsyncThunk(
-  'user/fetchTransactions',
-  async (params: { page?: number; limit?: number; type?: string } = {}, { rejectWithValue }) => {
-    try {
-      const queryParams = new URLSearchParams();
-      if (params.page) queryParams.append('page', params.page.toString());
-      if (params.limit) queryParams.append('limit', params.limit.toString());
-      if (params.type) queryParams.append('type', params.type);
-      
-      const response = await api.get<ApiResponse<PaginatedResponse<Transaction>>>(`${API_ENDPOINTS.USER_TRANSACTIONS}?${queryParams.toString()}`);
-      return response.data.data.items || response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch transactions');
-    }
-  }
-);
 
-export const fetchNotifications = createAsyncThunk(
-  'user/fetchNotifications',
-  async (params: { page?: number; limit?: number; read?: boolean } = {}, { rejectWithValue }) => {
-    try {
-      const queryParams = new URLSearchParams();
-      if (params.page) queryParams.append('page', params.page.toString());
-      if (params.limit) queryParams.append('limit', params.limit.toString());
-      if (params.read !== undefined) queryParams.append('read', params.read.toString());
-      
-      const response = await api.get<ApiResponse<PaginatedResponse<Notification>>>(`/notifications?${queryParams.toString()}`);
-      return response.data.data.items || response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch notifications');
-    }
-  }
-);
-
-export const markNotificationAsRead = createAsyncThunk(
-  'user/markNotificationAsRead',
-  async (notificationId: string, { rejectWithValue }) => {
-    try {
-      await api.patch(`/notifications/${notificationId}/read`);
-      return notificationId;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to mark notification as read');
-    }
-  }
-);
-
-export const markAllNotificationsAsRead = createAsyncThunk(
-  'user/markAllNotificationsAsRead',
-  async (_, { rejectWithValue }) => {
-    try {
-      await api.patch('/notifications/read-all');
-      return true;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to mark all notifications as read');
-    }
-  }
-);
-
-export const fetchFriends = createAsyncThunk(
-  'user/fetchFriends',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await api.get<ApiResponse<UserProfile[]>>('/users/friends');
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to fetch friends');
-    }
-  }
-);
-
-export const sendFriendRequest = createAsyncThunk(
-  'user/sendFriendRequest',
+export const followUser = createAsyncThunk(
+  'user/followUser',
   async (userId: string, { rejectWithValue }) => {
     try {
-      const response = await api.post<ApiResponse<UserProfile>>(`/users/friends/request/${userId}`);
-      return response.data.data;
+      await apiService.post(`/users/${userId}/follow`);
+      return userId;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to send friend request');
+      return rejectWithValue(error.response?.data?.message || 'Failed to follow user');
+    }
+  }
+);
+
+export const unfollowUser = createAsyncThunk(
+  'user/unfollowUser',
+  async (userId: string, { rejectWithValue }) => {
+    try {
+      await apiService.delete(`/users/${userId}/follow`);
+      return userId;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to unfollow user');
+    }
+  }
+);
+
+export const fetchFollowers = createAsyncThunk(
+  'user/fetchFollowers',
+  async ({ userId, page = 1, limit = 20 }: { userId: string; page?: number; limit?: number }, { rejectWithValue }) => {
+    try {
+      const response = await apiService.get<FollowResponse>(`/users/${userId}/followers`, {
+        params: { page, limit }
+      });
+      return { userId, data: response.data };
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch followers');
+    }
+  }
+);
+
+export const fetchFollowing = createAsyncThunk(
+  'user/fetchFollowing',
+  async ({ userId, page = 1, limit = 20 }: { userId: string; page?: number; limit?: number }, { rejectWithValue }) => {
+    try {
+      const response = await apiService.get<FollowResponse>(`/users/${userId}/following`, {
+        params: { page, limit }
+      });
+      return { userId, data: response.data };
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch following');
+    }
+  }
+);
+
+export const searchUsers = createAsyncThunk(
+  'user/searchUsers',
+  async ({ query, limit = 10 }: { query: string; limit?: number }, { rejectWithValue }) => {
+    try {
+      const response = await apiService.get<User[]>('/users/search', {
+        params: { q: query, limit }
+      });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to search users');
     }
   }
 );
@@ -160,142 +148,159 @@ const userSlice = createSlice({
   name: 'user',
   initialState,
   reducers: {
+    // Simple synchronous actions
     updateBalance: (state, action: PayloadAction<number>) => {
-      if (state.profile) {
-        state.profile.balance = action.payload;
+      if (state.currentUser) {
+        state.currentUser.kcBalance = action.payload;
       }
     },
-    addTransaction: (state, action: PayloadAction<Transaction>) => {
-      state.transactions.unshift(action.payload);
-      // Keep only last 100 transactions
-      if (state.transactions.length > 100) {
-        state.transactions = state.transactions.slice(0, 100);
-      }
-    },
-    addNotification: (state, action: PayloadAction<Notification>) => {
-      state.notifications.unshift(action.payload);
-      // Keep only last 50 notifications
-      if (state.notifications.length > 50) {
-        state.notifications = state.notifications.slice(0, 50);
-      }
-    },
-    removeNotification: (state, action: PayloadAction<string>) => {
-      state.notifications = state.notifications.filter(n => n.id !== action.payload);
-    },
-    updateUserPreferences: (state, action: PayloadAction<any>) => {
-      if (state.profile) {
-        state.profile.preferences = { ...state.profile.preferences, ...action.payload };
-      }
-    },
-    incrementGameStats: (state, action: PayloadAction<{ played: boolean; won: boolean; earnings?: number }>) => {
-      if (state.profile) {
-        const { played, won, earnings = 0 } = action.payload;
-        if (played) state.profile.stats.gamesPlayed += 1;
-        if (won) state.profile.stats.gamesWon += 1;
-        if (earnings) state.profile.stats.totalEarnings += earnings;
-      }
-    },
+    
     clearError: (state) => {
       state.error = null;
     },
-    clearNotifications: (state) => {
-      state.notifications = [];
+    
+    setCurrentUser: (state, action: PayloadAction<User | null>) => {
+      state.currentUser = action.payload;
+    },
+    
+    updateUserInCache: (state, action: PayloadAction<User>) => {
+      const user = action.payload;
+      state.users[user.id] = user;
+      
+      // Update current user if it's the same
+      if (state.currentUser?.id === user.id) {
+        state.currentUser = user;
+      }
+    },
+    
+    removeUserFromCache: (state, action: PayloadAction<string>) => {
+      delete state.users[action.payload];
+    },
+    
+    setOnlineStatus: (state, action: PayloadAction<{ userId: string; isOnline: boolean }>) => {
+      const { userId, isOnline } = action.payload;
+      
+      if (state.users[userId]) {
+        state.users[userId].isOnline = isOnline;
+      }
+      
+      if (state.currentUser?.id === userId) {
+        state.currentUser.isOnline = isOnline;
+      }
     },
   },
+  
   extraReducers: (builder) => {
     builder
-      // Fetch user profile
-      .addCase(fetchUserProfile.pending, (state) => {
+      // Fetch current user
+      .addCase(fetchCurrentUser.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchUserProfile.fulfilled, (state, action) => {
+      .addCase(fetchCurrentUser.fulfilled, (state, action) => {
         state.loading = false;
-        state.profile = action.payload;
+        state.currentUser = action.payload;
+        state.users[action.payload.id] = action.payload;
       })
-      .addCase(fetchUserProfile.rejected, (state, action) => {
+      .addCase(fetchCurrentUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })
       
       // Fetch user by ID
       .addCase(fetchUserById.fulfilled, (state, action) => {
-        const { userId, user } = action.payload;
-        state.otherProfiles[userId] = user;
+        const user = action.payload;
+        state.users[user.id] = user;
       })
       
-      // Update user profile
-      .addCase(updateUserProfile.pending, (state) => {
+      // Update profile
+      .addCase(updateProfile.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(updateUserProfile.fulfilled, (state, action) => {
+      .addCase(updateProfile.fulfilled, (state, action) => {
         state.loading = false;
-        state.profile = action.payload;
+        state.currentUser = action.payload;
+        state.users[action.payload.id] = action.payload;
       })
-      .addCase(updateUserProfile.rejected, (state, action) => {
+      .addCase(updateProfile.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+      })
+      
+      // Update settings
+      .addCase(updateSettings.fulfilled, (state, action) => {
+        state.currentUser = action.payload;
+        state.users[action.payload.id] = action.payload;
       })
       
       // Upload avatar
       .addCase(uploadAvatar.pending, (state) => {
         state.loading = true;
-        state.error = null;
       })
       .addCase(uploadAvatar.fulfilled, (state, action) => {
         state.loading = false;
-        if (state.profile) {
-          state.profile.avatar = action.payload.avatar || action.payload.url;
-        }
+        state.currentUser = action.payload;
+        state.users[action.payload.id] = action.payload;
       })
       .addCase(uploadAvatar.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })
       
-      // Fetch transactions
-      .addCase(fetchTransactions.fulfilled, (state, action) => {
-        state.transactions = action.payload;
-      })
-      
-      // Fetch notifications
-      .addCase(fetchNotifications.fulfilled, (state, action) => {
-        state.notifications = action.payload;
-      })
-      
-      // Mark notification as read
-      .addCase(markNotificationAsRead.fulfilled, (state, action) => {
-        const notificationId = action.payload;
-        const notification = state.notifications.find(n => n.id === notificationId);
-        if (notification) {
-          notification.read = true;
+      // Follow user
+      .addCase(followUser.fulfilled, (state, action) => {
+        const userId = action.payload;
+        if (state.currentUser) {
+          state.currentUser.following.push(userId);
         }
       })
       
-      // Mark all notifications as read
-      .addCase(markAllNotificationsAsRead.fulfilled, (state) => {
-        state.notifications.forEach(notification => {
-          notification.read = true;
-        });
+      // Unfollow user
+      .addCase(unfollowUser.fulfilled, (state, action) => {
+        const userId = action.payload;
+        if (state.currentUser) {
+          state.currentUser.following = state.currentUser.following.filter(id => id !== userId);
+        }
       })
       
-      // Fetch friends
-      .addCase(fetchFriends.fulfilled, (state, action) => {
-        state.friends = action.payload;
+      // Fetch followers
+      .addCase(fetchFollowers.fulfilled, (state, action) => {
+        const { userId, data } = action.payload;
+        state.followers[userId] = data.users;
+      })
+      
+      // Fetch following
+      .addCase(fetchFollowing.fulfilled, (state, action) => {
+        const { userId, data } = action.payload;
+        state.following[userId] = data.users;
+      })
+      
+      // Search users
+      .addCase(searchUsers.fulfilled, (state, action) => {
+        // Cache searched users
+        action.payload.forEach(user => {
+          state.users[user.id] = user;
+        });
       });
   },
 });
 
 export const {
   updateBalance,
-  addTransaction,
-  addNotification,
-  removeNotification,
-  updateUserPreferences,
-  incrementGameStats,
   clearError,
-  clearNotifications,
+  setCurrentUser,
+  updateUserInCache,
+  removeUserFromCache,
+  setOnlineStatus,
 } = userSlice.actions;
+
+// Selectors
+export const selectCurrentUser = (state: { user: UserState }) => state.user.currentUser;
+export const selectUserById = (userId: string) => (state: { user: UserState }) => state.user.users[userId];
+export const selectUserLoading = (state: { user: UserState }) => state.user.loading;
+export const selectUserError = (state: { user: UserState }) => state.user.error;
+export const selectFollowers = (userId: string) => (state: { user: UserState }) => state.user.followers[userId] || [];
+export const selectFollowing = (userId: string) => (state: { user: UserState }) => state.user.following[userId] || [];
 
 export default userSlice.reducer;

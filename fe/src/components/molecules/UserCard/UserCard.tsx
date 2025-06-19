@@ -1,8 +1,7 @@
-// src/components/molecules/UserCard/UserCard.tsx
-import React, { useState } from 'react';
+// fe/src/components/molecules/UserCard/UserCard.tsx - Optimized
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  User, 
   MessageCircle, 
   UserPlus, 
   UserMinus, 
@@ -10,13 +9,13 @@ import {
   Calendar,
   MoreVertical,
   Shield,
-  Ban
+  Ban,
+  Eye
 } from 'lucide-react';
 import Avatar from '@/components/atoms/Avatar/Avatar';
 import Badge from '@/components/atoms/Badge/Badge';
 import Button from '@/components/atoms/Button/Button';
 import { User as UserType } from '@/types/user';
-import { useAuth } from '@/features/auth/context/AuthContext';
 import { useUser } from '@/hooks/useUserProfile';
 import { USER_STATUS_OPTIONS, USER_ROLE_OPTIONS } from '@/constants/user';
 
@@ -25,10 +24,13 @@ interface UserCardProps {
   variant?: 'default' | 'compact' | 'detailed';
   showActions?: boolean;
   showStats?: boolean;
+  onClick?: () => void;
   onFollow?: (userId: string) => void;
   onUnfollow?: (userId: string) => void;
   onMessage?: (userId: string) => void;
   onViewProfile?: (userId: string) => void;
+  onBan?: (userId: string) => void;
+  onUnban?: (userId: string) => void;
 }
 
 const UserCard: React.FC<UserCardProps> = ({
@@ -36,19 +38,35 @@ const UserCard: React.FC<UserCardProps> = ({
   variant = 'default',
   showActions = true,
   showStats = true,
+  onClick,
   onFollow,
   onUnfollow,
   onMessage,
   onViewProfile,
+  onBan,
+  onUnban,
 }) => {
-  const { user: currentUser } = useAuth();
-  const { followUser, unfollowUser, loading } = useUser();
+  const { 
+    currentUser, 
+    follow, 
+    unfollow, 
+    loading, 
+    isCurrentUser, 
+    isFollowing: checkIsFollowing 
+  } = useUser();
+  
   const router = useRouter();
-  const [isFollowing, setIsFollowing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
 
-  const isOwnProfile = currentUser?.id === user.id;
+  // Initialize following state
+  useEffect(() => {
+    setIsFollowing(checkIsFollowing(user.id));
+  }, [user.id, checkIsFollowing]);
+
+  const isOwnProfile = isCurrentUser(user.id);
   const canModerate = currentUser?.role === 'admin' || currentUser?.role === 'moderator';
+  const canInteract = !isOwnProfile && user.status !== 'banned';
 
   const getStatusBadge = (status: string) => {
     const statusOption = USER_STATUS_OPTIONS.find(option => option.value === status);
@@ -81,13 +99,15 @@ const UserCard: React.FC<UserCardProps> = ({
     );
   };
 
-  const handleFollow = async () => {
+  const handleFollow = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
     try {
       if (isFollowing) {
-        await unfollowUser(user.id);
+        await unfollow(user.id);
         onUnfollow?.(user.id);
       } else {
-        await followUser(user.id);
+        await follow(user.id);
         onFollow?.(user.id);
       }
       setIsFollowing(!isFollowing);
@@ -96,7 +116,9 @@ const UserCard: React.FC<UserCardProps> = ({
     }
   };
 
-  const handleViewProfile = () => {
+  const handleViewProfile = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
     if (onViewProfile) {
       onViewProfile(user.id);
     } else {
@@ -104,7 +126,9 @@ const UserCard: React.FC<UserCardProps> = ({
     }
   };
 
-  const handleMessage = () => {
+  const handleMessage = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
     if (onMessage) {
       onMessage(user.id);
     } else {
@@ -112,9 +136,32 @@ const UserCard: React.FC<UserCardProps> = ({
     }
   };
 
+  const handleBan = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
+    if (user.status === 'banned') {
+      onUnban?.(user.id);
+    } else {
+      onBan?.(user.id);
+    }
+    setShowMenu(false);
+  };
+
+  const handleCardClick = () => {
+    if (onClick) {
+      onClick();
+    } else if (variant === 'compact') {
+      handleViewProfile();
+    }
+  };
+
+  // Compact variant
   if (variant === 'compact') {
     return (
-      <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
+      <div 
+        className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
+        onClick={handleCardClick}
+      >
         <Avatar
           src={user.avatar}
           name={user.username}
@@ -131,14 +178,35 @@ const UserCard: React.FC<UserCardProps> = ({
           {getRoleBadge(user.role)}
           {getStatusBadge(user.status)}
         </div>
+        
+        {/* Quick action for compact */}
+        {showActions && canInteract && (
+          <Button
+            variant={isFollowing ? "outline" : "primary"}
+            size="sm"
+            onClick={handleFollow}
+            loading={loading}
+          >
+            {isFollowing ? 'Following' : 'Follow'}
+          </Button>
+        )}
       </div>
     );
   }
 
+  // Default and detailed variants
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all duration-200">
       {/* Header */}
       <div className="relative p-6 pb-4">
+        {/* Close menu when clicking outside */}
+        {showMenu && (
+          <div 
+            className="fixed inset-0 z-10" 
+            onClick={() => setShowMenu(false)}
+          />
+        )}
+        
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-4">
             <Avatar
@@ -164,36 +232,45 @@ const UserCard: React.FC<UserCardProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowMenu(!showMenu)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(!showMenu);
+              }}
             >
               <MoreVertical className="w-4 h-4" />
             </Button>
 
             {showMenu && (
-              <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+              <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 min-w-[140px]">
                 <button
                   onClick={handleViewProfile}
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center"
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center transition-colors"
                 >
-                  <User className="w-4 h-4 mr-2" />
+                  <Eye className="w-4 h-4 mr-2" />
                   View Profile
                 </button>
-                {!isOwnProfile && (
+                
+                {canInteract && (
                   <button
                     onClick={handleMessage}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center"
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center transition-colors"
                   >
                     <MessageCircle className="w-4 h-4 mr-2" />
-                    Message
+                    Send Message
                   </button>
                 )}
-                {canModerate && !isOwnProfile && (
-                  <button
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center text-red-600"
-                  >
-                    <Ban className="w-4 h-4 mr-2" />
-                    {user.status === 'banned' ? 'Unban' : 'Ban'}
-                  </button>
+                
+                {canModerate && !isOwnProfile && (user.role !== 'admin') && (
+                  <>
+                    <div className="border-t border-gray-100 my-1" />
+                    <button
+                      onClick={handleBan}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center text-red-600 transition-colors"
+                    >
+                      <Ban className="w-4 h-4 mr-2" />
+                      {user.status === 'banned' ? 'Unban User' : 'Ban User'}
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -212,43 +289,47 @@ const UserCard: React.FC<UserCardProps> = ({
           {user.profile?.location && (
             <div className="flex items-center">
               <MapPin className="w-4 h-4 mr-1" />
-              <span>{user.profile.location}</span>
+              <span className="truncate">{user.profile.location}</span>
             </div>
           )}
           <div className="flex items-center">
             <Calendar className="w-4 h-4 mr-1" />
-            <span>Joined {new Date(user.createdAt).toLocaleDateString()}</span>
+            <span>Joined {new Date(user.createdAt).toLocaleDateString('en-US', { 
+              month: 'short', 
+              year: 'numeric' 
+            })}</span>
           </div>
         </div>
       </div>
 
       {/* Stats */}
       {showStats && user.stats && (
-        <div className="px-6 py-4 border-t border-gray-100">
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50">
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
               <div className="text-lg font-bold text-gray-900">
-                {user.stats.followersCount}
+                {user.stats.followersCount || 0}
               </div>
               <div className="text-sm text-gray-500">Followers</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-bold text-gray-900">
-                {user.stats.followingCount}
+                {user.stats.followingCount || 0}
               </div>
               <div className="text-sm text-gray-500">Following</div>
             </div>
+            
             {variant === 'detailed' && (
               <>
                 <div className="text-center">
                   <div className="text-lg font-bold text-purple-600">
-                    {user.kcBalance} KC
+                    {user.kcBalance || 0} KC
                   </div>
                   <div className="text-sm text-gray-500">Balance</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-bold text-green-600">
-                    {user.stats.gamesWon}
+                    {user.stats.gamesWon || 0}
                   </div>
                   <div className="text-sm text-gray-500">Games Won</div>
                 </div>
@@ -259,7 +340,7 @@ const UserCard: React.FC<UserCardProps> = ({
       )}
 
       {/* Actions */}
-      {showActions && !isOwnProfile && (
+      {showActions && canInteract && (
         <div className="px-6 py-4 border-t border-gray-100">
           <div className="flex space-x-3">
             <Button
@@ -270,7 +351,7 @@ const UserCard: React.FC<UserCardProps> = ({
               leftIcon={isFollowing ? <UserMinus className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
               className="flex-1"
             >
-              {isFollowing ? 'Unfollow' : 'Follow'}
+              {isFollowing ? 'Following' : 'Follow'}
             </Button>
             <Button
               variant="outline"
@@ -285,12 +366,28 @@ const UserCard: React.FC<UserCardProps> = ({
         </div>
       )}
 
-      {/* Click overlay for compact cards */}
-      {variant === 'compact' && (
-        <div 
-          className="absolute inset-0 cursor-pointer"
-          onClick={handleViewProfile}
-        />
+      {/* Trust Score Indicator */}
+      {variant === 'detailed' && user.trustScore !== undefined && (
+        <div className="px-6 py-3 border-t border-gray-100 bg-gray-50/30">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600">Trust Score</span>
+            <div className="flex items-center space-x-2">
+              <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-300 ${
+                    user.trustScore >= 80 ? 'bg-green-500' :
+                    user.trustScore >= 60 ? 'bg-yellow-500' :
+                    user.trustScore >= 40 ? 'bg-orange-500' : 'bg-red-500'
+                  }`}
+                  style={{ width: `${user.trustScore}%` }}
+                />
+              </div>
+              <span className="font-medium text-gray-900 min-w-[30px]">
+                {user.trustScore}/100
+              </span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

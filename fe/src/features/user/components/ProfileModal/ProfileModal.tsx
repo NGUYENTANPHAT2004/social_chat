@@ -1,12 +1,12 @@
+// fe/src/features/user/components/ProfileModal/ProfileModal.tsx - Optimized
 'use client';
 import React, { useState, useEffect } from 'react';
-import { X, Camera, User, Mail, Phone, MapPin, Calendar, Settings, Bell } from 'lucide-react';
+import { X, Camera, User, MapPin, Calendar, Settings, Bell } from 'lucide-react';
 import Button from '@/components/atoms/Button/Button';
 import Input from '@/components/atoms/Input/Input';
 import Avatar from '@/components/atoms/Avatar/Avatar';
 import Badge from '@/components/atoms/Badge/Badge';
-import { useAuth } from '@/features/auth/context/AuthContext';
-import { ProfileService } from '@/services/profile';
+import { useUser, useUserValidation } from '@/hooks/useUserProfile';
 import { UpdateProfileDto, UpdateSettingsDto } from '@/types/user';
 
 interface ProfileModalProps {
@@ -15,10 +15,25 @@ interface ProfileModalProps {
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
-  const { user, updateUser } = useAuth();
+  const { 
+    currentUser, 
+    updateUserProfile, 
+    updateUserSettings, 
+    updateAvatar, 
+    loading, 
+    error,
+    clearUserError 
+  } = useUser();
+  
+  const { 
+    validateDisplayName, 
+    validateBio, 
+    validateAvatarFile 
+  } = useUserValidation();
+
   const [activeTab, setActiveTab] = useState<'profile' | 'settings'>('profile');
-  const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   // Profile form data
   const [profileData, setProfileData] = useState<UpdateProfileDto>({
@@ -37,58 +52,88 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   });
 
   useEffect(() => {
-    if (user) {
+    if (currentUser) {
       setProfileData({
-        displayName: user.profile?.displayName || '',
-        bio: user.profile?.bio || '',
-        location: user.profile?.location || '',
-        birthdate: user.profile?.birthdate ? new Date(user.profile.birthdate).toISOString().split('T')[0] : '',
+        displayName: currentUser.profile?.displayName || '',
+        bio: currentUser.profile?.bio || '',
+        location: currentUser.profile?.location || '',
+        birthdate: currentUser.profile?.birthdate 
+          ? new Date(currentUser.profile.birthdate).toISOString().split('T')[0] 
+          : '',
       });
 
       setSettingsData({
-        notifications: user.settings?.notifications ?? true,
-        privacy: user.settings?.privacy || 'public',
-        language: user.settings?.language || 'vi',
-        theme: user.settings?.theme || 'light',
+        notifications: currentUser.settings?.notifications ?? true,
+        privacy: currentUser.settings?.privacy || 'public',
+        language: currentUser.settings?.language || 'vi',
+        theme: currentUser.settings?.theme || 'light',
       });
     }
-  }, [user]);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (error) {
+      setErrors({ general: error });
+    } else {
+      setErrors({});
+    }
+  }, [error]);
 
   const handleProfileInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setProfileData(prev => ({ ...prev, [name]: value }));
+    
+    // Clear field error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleSettingsChange = (field: string, value: any) => {
     setSettingsData(prev => ({ ...prev, [field]: value }));
   };
 
+  const validateForm = (): boolean => {
+    const newErrors: { [key: string]: string } = {};
+
+    // Validate display name
+    const displayNameError = validateDisplayName(profileData.displayName || '');
+    if (displayNameError) {
+      newErrors.displayName = displayNameError;
+    }
+
+    // Validate bio
+    const bioError = validateBio(profileData.bio || '');
+    if (bioError) {
+      newErrors.bio = bioError;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB');
-      return;
-    }
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+    // Validate file
+    const fileError = validateAvatarFile(file);
+    if (fileError) {
+      setErrors({ avatar: fileError });
       return;
     }
 
     try {
       setIsUploading(true);
-      const updatedUser = await ProfileService.updateAvatar(file);
-      updateUser(updatedUser);
+      setErrors({});
       
-      // Show success message
+      await updateAvatar(file);
+      
+      // Show success message (you can replace with toast notification)
       alert('Avatar updated successfully');
     } catch (error: any) {
       console.error('Avatar upload failed:', error);
-      alert(error.response?.data?.message || 'Failed to update avatar');
+      setErrors({ avatar: 'Failed to update avatar' });
     } finally {
       setIsUploading(false);
     }
@@ -96,39 +141,35 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!currentUser) return;
+
+    if (!validateForm()) return;
 
     try {
-      setIsLoading(true);
-      const updatedUser = await ProfileService.updateProfile(profileData);
-      updateUser(updatedUser);
+      clearUserError();
+      await updateUserProfile(profileData);
       
       // Show success message
       alert('Profile updated successfully');
     } catch (error: any) {
       console.error('Profile update failed:', error);
-      alert(error.response?.data?.message || 'Failed to update profile');
-    } finally {
-      setIsLoading(false);
+      setErrors({ general: 'Failed to update profile' });
     }
   };
 
   const handleSettingsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!currentUser) return;
 
     try {
-      setIsLoading(true);
-      const updatedUser = await ProfileService.updateSettings(settingsData);
-      updateUser(updatedUser);
+      clearUserError();
+      await updateUserSettings(settingsData);
       
       // Show success message
       alert('Settings updated successfully');
     } catch (error: any) {
       console.error('Settings update failed:', error);
-      alert(error.response?.data?.message || 'Failed to update settings');
-    } finally {
-      setIsLoading(false);
+      setErrors({ general: 'Failed to update settings' });
     }
   };
 
@@ -144,6 +185,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             <X className="w-5 h-5" />
           </Button>
         </div>
+
+        {/* Error Display */}
+        {errors.general && (
+          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600">{errors.general}</p>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b border-gray-200">
@@ -179,8 +227,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
               <div className="flex items-center space-x-6">
                 <div className="relative">
                   <Avatar
-                    src={user?.avatar}
-                    name={user?.username}
+                    src={currentUser?.avatar}
+                    name={currentUser?.username}
                     size="2xl"
                   />
                   <label
@@ -201,21 +249,25 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                   />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{user?.username}</h3>
-                  <p className="text-sm text-gray-500">{user?.email}</p>
+                  <h3 className="text-lg font-semibold text-gray-900">{currentUser?.username}</h3>
+                  <p className="text-sm text-gray-500">{currentUser?.email}</p>
                   <div className="flex items-center space-x-2 mt-2">
                     <Badge variant="primary" size="sm">
-                      {user?.role}
+                      {currentUser?.role}
                     </Badge>
                     <Badge 
-                      variant={user?.status === 'active' ? 'success' : 'default'} 
+                      variant={currentUser?.status === 'active' ? 'success' : 'default'} 
                       size="sm"
                     >
-                      {user?.status}
+                      {currentUser?.status}
                     </Badge>
                   </div>
                 </div>
               </div>
+
+              {errors.avatar && (
+                <div className="text-sm text-red-600">{errors.avatar}</div>
+              )}
 
               {/* Profile Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -228,6 +280,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                     value={profileData.displayName}
                     onChange={handleProfileInputChange}
                     leftIcon={<User className="w-5 h-5" />}
+                    error={errors.displayName}
                   />
                 </div>
 
@@ -259,31 +312,36 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                     value={profileData.bio}
                     onChange={handleProfileInputChange}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none ${
+                      errors.bio ? 'border-red-300' : 'border-gray-300'
+                    }`}
                     placeholder="Tell us about yourself..."
                   />
+                  {errors.bio && (
+                    <p className="mt-1 text-sm text-red-600">{errors.bio}</p>
+                  )}
                 </div>
               </div>
 
               {/* Stats */}
-              {user?.stats && (
+              {currentUser?.stats && (
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="font-semibold text-gray-900 mb-3">Account Statistics</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-600">{user.stats.gamesPlayed}</div>
+                      <div className="text-2xl font-bold text-purple-600">{currentUser.stats.gamesPlayed}</div>
                       <div className="text-sm text-gray-500">Games Played</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">{user.stats.gamesWon}</div>
+                      <div className="text-2xl font-bold text-green-600">{currentUser.stats.gamesWon}</div>
                       <div className="text-sm text-gray-500">Games Won</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-yellow-600">{user.stats.totalEarnings} KC</div>
+                      <div className="text-2xl font-bold text-yellow-600">{currentUser.stats.totalEarnings} KC</div>
                       <div className="text-sm text-gray-500">Total Earnings</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">{user.stats.followersCount}</div>
+                      <div className="text-2xl font-bold text-blue-600">{currentUser.stats.followersCount}</div>
                       <div className="text-sm text-gray-500">Followers</div>
                     </div>
                   </div>
@@ -294,7 +352,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                 <Button type="button" variant="outline" onClick={onClose}>
                   Cancel
                 </Button>
-                <Button type="submit" variant="primary" loading={isLoading}>
+                <Button type="submit" variant="primary" loading={loading}>
                   Save Profile
                 </Button>
               </div>
@@ -391,16 +449,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Balance:</span>
-                    <span className="font-medium text-purple-600">{user?.kcBalance} KC</span>
+                    <span className="font-medium text-purple-600">{currentUser?.kcBalance} KC</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Trust Score:</span>
-                    <span className="font-medium">{user?.trustScore}/100</span>
+                    <span className="font-medium">{currentUser?.trustScore}/100</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Member Since:</span>
                     <span className="font-medium">
-                      {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                      {currentUser?.createdAt ? new Date(currentUser.createdAt).toLocaleDateString() : 'N/A'}
                     </span>
                   </div>
                 </div>
@@ -410,7 +468,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                 <Button type="button" variant="outline" onClick={onClose}>
                   Cancel
                 </Button>
-                <Button type="submit" variant="primary" loading={isLoading}>
+                <Button type="submit" variant="primary" loading={loading}>
                   Save Settings
                 </Button>
               </div>

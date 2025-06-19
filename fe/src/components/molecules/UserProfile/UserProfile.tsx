@@ -53,7 +53,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
         </div>
         {showBalance && (
           <p className={`text-gray-500 ${classes.subtext}`}>
-            {user.balance} KC
+            {user.kcBalance} KC
           </p>
         )}
       </div>

@@ -17,7 +17,6 @@ const LoginPage: React.FC = () => {
     password: '',
   });
 
-  // Handle OAuth callbacks
   const handleOAuthCallback = useCallback(() => {
     const token = searchParams.get('token');
     const refreshToken = searchParams.get('refreshToken');
@@ -55,9 +54,7 @@ const LoginPage: React.FC = () => {
     
     try {
       await login(formData.identifier, formData.password);
-      // Redirect sẽ được handle bởi useEffect trên
     } catch (error) {
-      // Error đã được handle trong AuthContext
       console.error('Login error:', error);
     }
   };

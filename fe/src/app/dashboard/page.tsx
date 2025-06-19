@@ -14,7 +14,7 @@ const DashboardPage: React.FC = () => {
  const [activeTab, setActiveTab] = useState<'chat' | 'groups' | 'video' | 'reels' | 'games'>('chat');
   return (
     <DashboardTemplate
-    leftSidebar={<ChatPanel activeTab={activeTab} />}
+    leftSidebar={<ChatPanel activeTab={activeTab} searchQuery="" onSearchChange={() => {}} />}
       rightSidebar={<FeatureSidebar />}
     >
       <div className="p-6">

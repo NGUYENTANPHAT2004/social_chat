@@ -1,11 +1,11 @@
-// src/components/features/user/FollowersModal/FollowersModal.tsx
+// fe/src/features/user/components/FollowersModal/FollowersModal.tsx - Optimized
 'use client';
 import React, { useState, useEffect } from 'react';
 import { X, Users, Search } from 'lucide-react';
 import Button from '@/components/atoms/Button/Button';
 import Input from '@/components/atoms/Input/Input';
 import UserCard from '@/components/molecules/UserCard/UserCard';
-import { useUser } from '@/hooks/useUserProfile';
+import { useUser, useUserData } from '@/hooks/useUserProfile';
 import { UserBasic } from '@/types/user';
 
 interface FollowersModalProps {
@@ -23,7 +23,10 @@ const FollowersModal: React.FC<FollowersModalProps> = ({
   username,
   type,
 }) => {
-  const { fetchFollowers, fetchFollowing, loading } = useUser();
+  const { getFollowers, getFollowing, loading } = useUser();
+   // eslint-disable-next-line
+  const { followers, following } = useUserData(userId);
+  
   const [users, setUsers] = useState<UserBasic[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -32,7 +35,7 @@ const FollowersModal: React.FC<FollowersModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      loadUsers();
+      loadUsers(true);
     }
   }, [isOpen, type]);
 
@@ -40,18 +43,26 @@ const FollowersModal: React.FC<FollowersModalProps> = ({
     try {
       const currentPage = resetPage ? 1 : page;
       const response = type === 'followers' 
-        ? await fetchFollowers(userId, currentPage, 20)
-        : await fetchFollowing(userId, currentPage, 20);
+        ? await getFollowers(userId, currentPage, 20)
+        : await getFollowing(userId, currentPage, 20);
 
+      const newUsers = response.payload?.users || [];
+      
       if (resetPage) {
-        setUsers(response.followers || response.following);
+        setUsers(newUsers);
         setPage(1);
       } else {
-        setUsers(prev => [...prev, ...(response.followers || response.following)]);
+        setUsers(prev => [...prev, ...newUsers]);
       }
 
-      setTotal(response.total);
-      setHasMore((response.followers || response.following).length === 20);
+      setTotal(response.payload?.total || 0);
+      setHasMore(newUsers.length === 20);
+      
+      if (resetPage) {
+        setPage(2);
+      } else {
+        setPage(prev => prev + 1);
+      }
     } catch (error) {
       console.error('Failed to load users:', error);
     }
@@ -59,14 +70,27 @@ const FollowersModal: React.FC<FollowersModalProps> = ({
 
   const loadMore = () => {
     if (!loading && hasMore) {
-      setPage(prev => prev + 1);
       loadUsers(false);
     }
   };
 
+  const handleFollow = (userId: string) => {
+    // Update local user list to reflect follow state
+    setUsers(prev => prev.map(user => 
+      user.id === userId ? { ...user, isFollowing: true } : user
+    ));
+  };
+
+  const handleUnfollow = (userId: string) => {
+    // Update local user list to reflect unfollow state  
+    setUsers(prev => prev.map(user => 
+      user.id === userId ? { ...user, isFollowing: false } : user
+    ));
+  };
+
   const filteredUsers = users.filter(user =>
     user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (user.profile?.displayName && user.profile.displayName.toLowerCase().includes(searchQuery.toLowerCase()))
+    (user.displayName && user.displayName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   if (!isOpen) return null;
@@ -140,10 +164,12 @@ const FollowersModal: React.FC<FollowersModalProps> = ({
               {filteredUsers.map((user) => (
                 <UserCard
                   key={user.id}
-                  user={user as any} 
+                  user={user as any}
                   variant="compact"
-                  showActions={false}
+                  showActions={true}
                   showStats={false}
+                  onFollow={handleFollow}
+                  onUnfollow={handleUnfollow}
                 />
               ))}
 

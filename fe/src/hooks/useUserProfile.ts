@@ -1,353 +1,175 @@
-// src/hooks/useUserProfile.ts
-import { useState, useCallback } from 'react';
-import { useAuth } from '@/features/auth/context/AuthContext';
-import { ProfileService, UserService } from '@/services/profile';
-import { 
-  UpdateProfileDto, 
-  UpdateSettingsDto, 
-  User, 
-  UserBasic,
-  FollowersResponse,
-  FollowingResponse 
-} from '@/types/user';
+// fe/src/hooks/useUser.ts - Simplified User Hook
+import { useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import {
+  fetchCurrentUser,
+  fetchUserById,
+  updateProfile,
+  updateSettings,
+  uploadAvatar,
+  followUser,
+  unfollowUser,
+  fetchFollowers,
+  fetchFollowing,
+  searchUsers,
+  selectCurrentUser,
+  selectUserById,
+  selectUserLoading,
+  selectUserError,
+  selectFollowers,
+  selectFollowing,
+  clearError,
+} from '@/store/slices/userSlice';
+import { UpdateProfileDto, UpdateSettingsDto } from '@/types/user';
 
-export const useUserProfile = () => {
-  const { user, updateUser } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export const useUser = () => {
+  const dispatch = useAppDispatch();
+  
+  // Selectors
+  const currentUser = useAppSelector(selectCurrentUser);
+  const loading = useAppSelector(selectUserLoading);
+  const error = useAppSelector(selectUserError);
 
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  // Actions
+  const getCurrentUser = useCallback(() => {
+    return dispatch(fetchCurrentUser());
+  }, [dispatch]);
 
-  // Update current user profile
-  const updateProfile = useCallback(async (data: UpdateProfileDto) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const updatedUser = await ProfileService.updateProfile(data);
-      updateUser(updatedUser);
-      
-      return updatedUser;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to update profile';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [updateUser]);
+  const getUserById = useCallback((id: string) => {
+    return dispatch(fetchUserById(id));
+  }, [dispatch]);
 
-  // Update user settings
-  const updateSettings = useCallback(async (settings: UpdateSettingsDto) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const updatedUser = await ProfileService.updateSettings(settings);
-      updateUser(updatedUser);
-      
-      return updatedUser;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to update settings';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [updateUser]);
+  const updateUserProfile = useCallback((data: UpdateProfileDto) => {
+    return dispatch(updateProfile(data));
+  }, [dispatch]);
 
-  // Update avatar
-  const updateAvatar = useCallback(async (file: File) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const updatedUser = await ProfileService.updateAvatar(file);
-      updateUser(updatedUser);
-      
-      return updatedUser;
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Failed to update avatar';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [updateUser]);
+  const updateUserSettings = useCallback((data: UpdateSettingsDto) => {
+    return dispatch(updateSettings(data));
+  }, [dispatch]);
+
+  const updateAvatar = useCallback((file: File) => {
+    return dispatch(uploadAvatar(file));
+  }, [dispatch]);
+
+  const follow = useCallback((userId: string) => {
+    return dispatch(followUser(userId));
+  }, [dispatch]);
+
+  const unfollow = useCallback((userId: string) => {
+    return dispatch(unfollowUser(userId));
+  }, [dispatch]);
+
+  const getFollowers = useCallback((userId: string, page?: number, limit?: number) => {
+    return dispatch(fetchFollowers({ userId, page, limit }));
+  }, [dispatch]);
+
+  const getFollowing = useCallback((userId: string, page?: number, limit?: number) => {
+    return dispatch(fetchFollowing({ userId, page, limit }));
+  }, [dispatch]);
+
+  const search = useCallback((query: string, limit?: number) => {
+    return dispatch(searchUsers({ query, limit }));
+  }, [dispatch]);
+
+  const clearUserError = useCallback(() => {
+    dispatch(clearError());
+  }, [dispatch]);
 
   return {
-    user,
+    // State
+    currentUser,
     loading,
     error,
-    updateProfile,
-    updateSettings,
+    
+    // Actions
+    getCurrentUser,
+    getUserById,
+    updateUserProfile,
+    updateUserSettings,
     updateAvatar,
-    clearError,
+    follow,
+    unfollow,
+    getFollowers,
+    getFollowing,
+    search,
+    clearUserError,
+    
+    // Helper functions
+    isCurrentUser: (userId: string) => currentUser?.id === userId,
+    isFollowing: (userId: string) => currentUser?.following.includes(userId) || false,
   };
 };
 
-// Hook for managing other users (public profiles)
-export const useUser = (userId?: string) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [followers, setFollowers] = useState<UserBasic[]>([]);
-  const [following, setFollowing] = useState<UserBasic[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isFollowing, setIsFollowing] = useState(false);
-
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
-  // Fetch user by ID
-  const fetchUser = useCallback(async (id: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const userData = await UserService.getUserById(id);
-      setUser(userData);
-      
-      return userData;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to fetch user';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch user by username
-  const fetchUserByUsername = useCallback(async (username: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const userData = await UserService.getUserByUsername(username);
-      setUser(userData);
-      
-      return userData;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to fetch user';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Follow user
-  const followUser = useCallback(async (targetUserId: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      await UserService.followUser(targetUserId);
-      setIsFollowing(true);
-      
-      // Update followers count if we have the user data
-      if (user && user.id === targetUserId) {
-        setUser(prev => prev ? {
-          ...prev,
-          stats: {
-            ...prev.stats!,
-            followersCount: (prev.stats?.followersCount || 0) + 1
-          }
-        } : null);
-      }
-      
-      return true;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to follow user';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  // Unfollow user
-  const unfollowUser = useCallback(async (targetUserId: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      await UserService.unfollowUser(targetUserId);
-      setIsFollowing(false);
-      
-      // Update followers count if we have the user data
-      if (user && user.id === targetUserId) {
-        setUser(prev => prev ? {
-          ...prev,
-          stats: {
-            ...prev.stats!,
-            followersCount: Math.max((prev.stats?.followersCount || 0) - 1, 0)
-          }
-        } : null);
-      }
-      
-      return true;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to unfollow user';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  // Fetch followers
-  const fetchFollowers = useCallback(async (targetUserId: string, page = 1, limit = 10) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response: FollowersResponse = await UserService.getFollowers(targetUserId, page, limit);
-      setFollowers(response.followers);
-      
-      return response;
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Failed to fetch followers';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch following
-  const fetchFollowing = useCallback(async (targetUserId: string, page = 1, limit = 10) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response: FollowingResponse = await UserService.getFollowing(targetUserId, page, limit);
-      setFollowing(response.following);
-      
-      return response;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to fetch following';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+// Hook to get specific user data
+export const useUserData = (userId: string) => {
+  const user = useAppSelector(selectUserById(userId));
+  const followers = useAppSelector(selectFollowers(userId));
+  const following = useAppSelector(selectFollowing(userId));
+  
   return {
     user,
     followers,
     following,
-    loading,
-    error,
-    isFollowing,
-    fetchUser,
-    fetchUserByUsername,
-    followUser,
-    unfollowUser,
-    fetchFollowers,
-    fetchFollowing,
-    clearError,
   };
 };
 
-// Hook for push notifications
-export const usePushNotifications = () => {
-  const { user, updateUser } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const clearError = useCallback(() => {
-    setError(null);
+// Hook for user validation
+export const useUserValidation = () => {
+  const validateUsername = useCallback((username: string): string | null => {
+    if (username.length < 3 || username.length > 20) {
+      return 'Username must be 3-20 characters';
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return 'Username can only contain letters, numbers, and underscores';
+    }
+    return null;
   }, []);
 
-  // Register device token
-  const registerDeviceToken = useCallback(async (token: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      await ProfileService.addDeviceToken(token);
-      
-      // Update user device tokens if needed
-      if (user && !user.deviceTokens.includes(token)) {
-        updateUser({
-          ...user,
-          deviceTokens: [...user.deviceTokens, token]
-        });
-      }
-      
-      return true;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to register device token';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
+  const validateDisplayName = useCallback((displayName: string): string | null => {
+    if (displayName.length > 50) {
+      return 'Display name must be less than 50 characters';
     }
-  }, [user, updateUser]);
+    if (displayName.length < 1) {
+      return 'Display name is required';
+    }
+    return null;
+  }, []);
 
-  // Unregister device token
-  const unregisterDeviceToken = useCallback(async (token: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      await ProfileService.removeDeviceToken(token);
-      
-      // Update user device tokens
-      if (user) {
-        updateUser({
-          ...user,
-          deviceTokens: user.deviceTokens.filter(t => t !== token)
-        });
-      }
-      
-      return true;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to unregister device token';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
+  const validateBio = useCallback((bio: string): string | null => {
+    if (bio.length > 500) {
+      return 'Bio must be less than 500 characters';
     }
-  }, [user, updateUser]);
+    return null;
+  }, []);
 
-  // Update push settings
-  const updatePushSettings = useCallback(async (settings: any) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const updatedSettings = await ProfileService.updatePushSettings(settings);
-      
-      // Update user push settings
-      if (user) {
-        updateUser({
-          ...user,
-          pushSettings: updatedSettings
-        });
-      }
-      
-      return updatedSettings;
-    } catch (err: unknown) {
-      const errorMessage = err.response?.data?.message || 'Failed to update push settings';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    } finally {
-      setLoading(false);
+  const validateEmail = useCallback((email: string): string | null => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return 'Please enter a valid email address';
     }
-  }, [user, updateUser]);
+    return null;
+  }, []);
+
+  const validateAvatarFile = useCallback((file: File): string | null => {
+    // Check file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      return 'File size must be less than 5MB';
+    }
+    
+    // Check file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      return 'Please upload a valid image file (JPEG, PNG, WebP, or GIF)';
+    }
+    
+    return null;
+  }, []);
 
   return {
-    loading,
-    error,
-    registerDeviceToken,
-    unregisterDeviceToken,
-    updatePushSettings,
-    clearError,
+    validateUsername,
+    validateDisplayName,
+    validateBio,
+    validateEmail,
+    validateAvatarFile,
   };
 };
