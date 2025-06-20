@@ -3,7 +3,7 @@
 import React, { useCallback } from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { UserCardProps } from '../types';
+import { UserCardProps } from '../type';
 import { useFollowToggle, useIsFollowing } from '../hooks';
 import { getUserDisplayName, getUserAvatarUrl, getUserStatusColor, formatKCBalance } from '../utils';
 import { FollowButton } from './FollowButton';

@@ -310,8 +310,8 @@ export interface UserSettingsProps {
 export interface FollowButtonProps {
   userId: string;
   isFollowing: boolean;
-  onFollow: () => void;
-  onUnfollow: () => void;
+  onFollow: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onUnfollow: (e: React.MouseEvent<HTMLButtonElement>) => void;
   isLoading?: boolean;
   className?: string;
 }
