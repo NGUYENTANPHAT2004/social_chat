@@ -52,32 +52,32 @@ export class PublicUserService {
   /**
    * Tìm kiếm người dùng
    */
-  static async searchUsers(params: UserSearchParams): Promise<User[]> {
+  static async searchUsers(params: UserSearchParams): Promise <ApiResponse<User[]>> {
     const response = await apiClient.get<ApiResponse<User[]>>(
       USER_ENDPOINTS.SEARCH,
       { params }
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Lấy thông tin người dùng theo ID
    */
-  static async getUserById(id: string): Promise<User> {
+  static async getUserById(id: string): Promise <ApiResponse<User>> {
     const response = await apiClient.get<ApiResponse<User>>(
       USER_ENDPOINTS.GET_USER(id)
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Lấy thông tin người dùng theo username
    */
-  static async getUserByUsername(username: string): Promise<User> {
+  static async getUserByUsername(username: string): Promise <ApiResponse<User>>{
     const response = await apiClient.get<ApiResponse<User>>(
       USER_ENDPOINTS.GET_USER_BY_USERNAME(username)
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
@@ -86,12 +86,12 @@ export class PublicUserService {
   static async getUserFollowers(
     id: string, 
     params: FollowersParams = {}
-  ): Promise<PaginatedResponse<User>> {
+  ): Promise<ApiResponse<PaginatedResponse<User>>> {
     const response = await apiClient.get<ApiResponse<PaginatedResponse<User>>>(
       USER_ENDPOINTS.GET_FOLLOWERS(id),
       { params }
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
@@ -100,22 +100,22 @@ export class PublicUserService {
   static async getUserFollowing(
     id: string, 
     params: FollowingParams = {}
-  ): Promise<PaginatedResponse<User>> {
+  ): Promise<ApiResponse<PaginatedResponse<User>>> {
     const response = await apiClient.get<ApiResponse<PaginatedResponse<User>>>(
       USER_ENDPOINTS.GET_FOLLOWING(id),
       { params }
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Lấy thống kê của người dùng
    */
-  static async getUserStats(id: string): Promise<UserStats> {
+  static async getUserStats(id: string): Promise<ApiResponse<UserStats>> {
     const response = await apiClient.get<ApiResponse<UserStats>>(
       USER_ENDPOINTS.GET_STATS(id)
     );
-    return response.data.data;
+    return response.data;
   }
 }
 
@@ -126,45 +126,45 @@ export class UserService {
   /**
    * Lấy profile của user hiện tại
    */
-  static async getCurrentProfile(): Promise<User> {
+  static async getCurrentProfile(): Promise <ApiResponse<User>> {
     const response = await apiClient.get<ApiResponse<User>>(
       USER_ENDPOINTS.GET_PROFILE
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Cập nhật profile của user hiện tại
    */
-  static async updateProfile(data: UpdateProfileDto): Promise<User> {
+  static async updateProfile(data: UpdateProfileDto): Promise<ApiResponse<User>> {
     const response = await apiClient.patch<ApiResponse<User>>(
       USER_ENDPOINTS.UPDATE_PROFILE,
       data
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Cập nhật avatar
    */
-  static async updateAvatar(file: File): Promise<User> {
+  static async updateAvatar(file: File): Promise <ApiResponse<User>> {
     const response = await apiClient.uploadFile<ApiResponse<User>>(
       USER_ENDPOINTS.UPDATE_AVATAR,
       file,
       'avatar'
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Cập nhật settings
    */
-  static async updateSettings(settings: UpdateSettingsDto): Promise<User> {
+  static async updateSettings(settings: UpdateSettingsDto): Promise <ApiResponse<User>> {
     const response = await apiClient.patch<ApiResponse<User>>(
       USER_ENDPOINTS.UPDATE_SETTINGS,
       settings
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
@@ -174,7 +174,7 @@ export class UserService {
     const response = await apiClient.post<ApiResponse<{ success: boolean }>>(
       USER_ENDPOINTS.FOLLOW_USER(userId)
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
@@ -184,43 +184,41 @@ export class UserService {
     const response = await apiClient.delete<ApiResponse<{ success: boolean }>>(
       USER_ENDPOINTS.UNFOLLOW_USER(userId)
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Thêm device token cho push notifications
    */
-  static async addDeviceToken(deviceToken: string): Promise<{ success: boolean; message: string }> {
-    const response = await apiClient.post<ApiResponse<{ success: boolean; message: string }>>(
-      USER_ENDPOINTS.ADD_DEVICE_TOKEN,
-      { deviceToken }
-    );
-    return response.data.data;
-  }
+  static async addDeviceToken(deviceToken: string): Promise<ApiResponse<{ success: boolean; message: string }>> {
+  const response = await apiClient.post<ApiResponse<{ success: boolean; message: string }>>(
+    USER_ENDPOINTS.ADD_DEVICE_TOKEN,
+    { deviceToken }
+  );
+  return response.data; // trả về dạng ApiResponse<{...}>
+}
 
-  /**
-   * Xóa device token
-   */
- static async removeDeviceToken(deviceToken: string): Promise<{ success: boolean; message: string }> {
+static async removeDeviceToken(deviceToken: string): Promise<ApiResponse<{ success: boolean; message: string }>> {
   const response = await apiClient.delete<ApiResponse<{ success: boolean; message: string }>>(
     USER_ENDPOINTS.REMOVE_DEVICE_TOKEN,
     {
       params: { deviceToken },
     }
   );
-  return response.data.data;
+  return response.data; // trả về dạng ApiResponse<{...}>
 }
+
 
 
   /**
    * Cập nhật push notification settings
    */
-  static async updatePushSettings(settings: UpdatePushSettingsDto): Promise<User> {
+  static async updatePushSettings(settings: UpdatePushSettingsDto): Promise<ApiResponse<User>> {
     const response = await apiClient.patch<ApiResponse<User>>(
       USER_ENDPOINTS.UPDATE_PUSH_SETTINGS,
       settings
     );
-    return response.data.data;
+    return response.data;
   }
 }
 
@@ -231,54 +229,55 @@ export class AdminUserService {
   /**
    * Lấy tất cả users (Admin/Moderator only)
    */
-  static async getAllUsers(params: UserListParams = {}): Promise<PaginatedResponse<User>> {
-    const response = await apiClient.get<ApiResponse<PaginatedResponse<User>>>(
-      USER_ENDPOINTS.GET_ALL_USERS,
-      { params }
-    );
-    return response.data.data;
-  }
+  static async getAllUsers(params: UserListParams = {}): Promise<ApiResponse<PaginatedResponse<User>>> {
+  const response = await apiClient.get<ApiResponse<PaginatedResponse<User>>>(
+    USER_ENDPOINTS.GET_ALL_USERS,
+    { params }
+  );
+  return response.data; 
+}
+
 
   /**
    * Cập nhật user (Admin only)
    */
-  static async updateUser(id: string, data: UpdateUserDto): Promise<User> {
+  static async updateUser(id: string, data: UpdateUserDto): Promise<ApiResponse<User>> {
     const response = await apiClient.patch<ApiResponse<User>>(
       USER_ENDPOINTS.UPDATE_USER(id),
       data
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Ban user (Admin/Moderator only)
    */
-  static async banUser(id: string, reason?: string): Promise<User> {
+  static async banUser(id: string, reason?: string): Promise<ApiResponse<User>> {
     const response = await apiClient.post<ApiResponse<User>>(
       USER_ENDPOINTS.BAN_USER(id),
       { reason }
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Unban user (Admin/Moderator only)
    */
-  static async unbanUser(id: string): Promise<User> {
+  static async unbanUser(id: string): Promise<ApiResponse<User>> {
     const response = await apiClient.post<ApiResponse<User>>(
       USER_ENDPOINTS.UNBAN_USER(id)
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
    * Xóa user (Admin only)
    */
-  static async deleteUser(id: string): Promise<{ success: boolean; message: string }> {
+  static async deleteUser(id: string): Promise<ApiResponse<{ success: boolean; message: string }>> { 
     const response = await apiClient.delete<ApiResponse<{ success: boolean; message: string }>>(
       USER_ENDPOINTS.DELETE_USER(id)
     );
-    return response.data.data;
+    return response.data;
   }
 }
 

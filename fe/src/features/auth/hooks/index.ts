@@ -22,7 +22,6 @@ import {
   validateLoginForm,
   validateRegisterForm,
 } from '../utils';
-import { useSearchParams } from 'next/navigation';
 
 
 export const AUTH_QUERY_KEYS = {
@@ -36,9 +35,6 @@ export const AUTH_QUERY_KEYS = {
  */
 export const useLogin = () => {
   const queryClient = useQueryClient();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/dashboard';
   return useMutation({
     mutationFn: async (data: LoginFormData) => {
       // Validate form data
@@ -73,7 +69,6 @@ export const useLogin = () => {
         queryClient.setQueryData(AUTH_QUERY_KEYS.user, data.user);
         queryClient.setQueryData(AUTH_QUERY_KEYS.profile, data.user);
         toast.success('Đăng nhập thành công!');
-        router.push(redirect);
       } catch (error) {
         console.error('Login success handler error:', error);
         toast.error('Có lỗi xảy ra khi xử lý đăng nhập');
