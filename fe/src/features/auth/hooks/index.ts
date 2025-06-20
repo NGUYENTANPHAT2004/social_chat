@@ -1,8 +1,9 @@
-// src/features/auth/hooks/index.ts
+
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useCallback } from 'react';
+import toast from 'react-hot-toast';
 
 import { AuthService, PasswordService, EmailVerificationService } from '../services';
 import type {
@@ -21,8 +22,9 @@ import {
   validateLoginForm,
   validateRegisterForm,
 } from '../utils';
+import { useSearchParams } from 'next/navigation';
 
-// Query keys
+
 export const AUTH_QUERY_KEYS = {
   user: ['auth', 'user'] as const,
   profile: ['auth', 'profile'] as const,
@@ -35,7 +37,8 @@ export const AUTH_QUERY_KEYS = {
 export const useLogin = () => {
   const queryClient = useQueryClient();
   const router = useRouter();
-
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get('redirect') || '/dashboard';
   return useMutation({
     mutationFn: async (data: LoginFormData) => {
       // Validate form data
@@ -53,19 +56,33 @@ export const useLogin = () => {
       return response;
     },
     onSuccess: (data: AuthResponse) => {
-      // Lưu tokens và user vào storage
-      setStoredTokens(data.accessToken, data.refreshToken);
-      setStoredUser(data.user);
+      try {
+        console.log('Login response:', data);
 
-      // Update cache
-      queryClient.setQueryData(AUTH_QUERY_KEYS.user, data.user);
-      queryClient.setQueryData(AUTH_QUERY_KEYS.profile, data.user);
+        // Check if response has required fields
+        if (!data.accessToken || !data.user) {
+          console.error('Invalid auth response structure:', data);
+          throw new Error('Phản hồi không hợp lệ từ máy chủ');
+        }
 
-      // Redirect to dashboard
-      router.push('/dashboard');
+        // Lưu tokens và user vào storage
+        setStoredTokens(data.accessToken, data.refreshToken);
+        setStoredUser(data.user);
+
+        // Update cache
+        queryClient.setQueryData(AUTH_QUERY_KEYS.user, data.user);
+        queryClient.setQueryData(AUTH_QUERY_KEYS.profile, data.user);
+        toast.success('Đăng nhập thành công!');
+        router.push(redirect);
+      } catch (error) {
+        console.error('Login success handler error:', error);
+        toast.error('Có lỗi xảy ra khi xử lý đăng nhập');
+      }
     },
-    onError: (error : any) => {
-      console.error('Login error:', parseAuthError(error));
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Login error:', errorMessage);
+      toast.error(errorMessage);
     },
   });
 };
@@ -94,20 +111,41 @@ export const useRegister = () => {
 
       return response;
     },
-    onSuccess: (data: AuthResponse) => {
-      // Lưu tokens và user vào storage
-      setStoredTokens(data.accessToken, data.refreshToken);
-      setStoredUser(data.user);
+    onSuccess: (data: any) => {
+      try {
+        console.log('Register response:', data);
 
-      // Update cache
-      queryClient.setQueryData(AUTH_QUERY_KEYS.user, data.user);
-      queryClient.setQueryData(AUTH_QUERY_KEYS.profile, data.user);
+        // Check response structure and handle different scenarios
+        if (data.accessToken && data.user) {
+          // Complete auth response - user is logged in immediately
+          setStoredTokens(data.accessToken, data.refreshToken);
+          setStoredUser(data.user);
 
-      // Redirect to dashboard
-      router.push('/dashboard');
+          // Update cache
+          queryClient.setQueryData(AUTH_QUERY_KEYS.user, data.user);
+          queryClient.setQueryData(AUTH_QUERY_KEYS.profile, data.user);
+
+          toast.success('Đăng ký thành công!');
+          router.push('/dashboard');
+        } else if (data.user && !data.accessToken) {
+          // Registration successful but user needs to verify email or login manually
+          toast.success('Đăng ký thành công! Vui lòng đăng nhập.');
+          router.push('/login');
+        } else {
+          // Unexpected response structure - still redirect to login as fallback
+          console.warn('Unexpected register response structure:', data);
+          toast.success('Đăng ký thành công! Vui lòng đăng nhập.');
+          router.push('/login');
+        }
+      } catch (error) {
+        console.error('Register success handler error:', error);
+        toast.error('Có lỗi xảy ra khi xử lý đăng ký');
+      }
     },
-    onError: (error : any) => {
-      console.error('Register error:', parseAuthError(error));
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Register error:', errorMessage);
+      toast.error(errorMessage);
     },
   });
 };
@@ -133,15 +171,21 @@ export const useLogout = () => {
       // Clear all queries
       queryClient.clear();
 
+      toast.success('Đăng xuất thành công!');
+      
       // Redirect to login
       router.push('/login');
     },
-    onError: (error : any) => {
+    onError: (error: any) => {
       // Ngay cả khi logout API fail, vẫn clear local storage
       clearAuthStorage();
       queryClient.clear();
+      
+      const errorMessage = parseAuthError(error);
+      console.error('Logout error:', errorMessage);
+      toast.error('Đăng xuất thành công!'); // Still show success as local cleanup worked
+      
       router.push('/login');
-      console.error('Logout error:', parseAuthError(error));
     },
   });
 };
@@ -160,7 +204,7 @@ export const useUser = () => {
       return AuthService.getProfile();
     },
     initialData: () => getStoredUser(),
-    retry: (failureCount : number, error: any) => {
+    retry: (failureCount: number, error: any) => {
       // Không retry nếu là lỗi 401 (unauthorized)
       if (error?.response?.status === 401) {
         return false;
@@ -218,7 +262,7 @@ export const useRefreshToken = () => {
       }
       return AuthService.refreshToken(refreshToken);
     },
-    onSuccess: (data : any) => {
+    onSuccess: (data: any) => {
       // Update stored tokens
       setStoredTokens(data.accessToken, data.refreshToken);
       
@@ -240,8 +284,13 @@ export const useRefreshToken = () => {
 export const useForgotPassword = () => {
   return useMutation({
     mutationFn: (email: string) => PasswordService.sendResetEmail(email),
-    onError: (error : any) => {
-      console.error('Forgot password error:', parseAuthError(error));
+    onSuccess: () => {
+      toast.success('Email reset đã được gửi!');
+    },
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Forgot password error:', errorMessage);
+      toast.error(errorMessage);
     },
   });
 };
@@ -256,11 +305,14 @@ export const useResetPassword = () => {
     mutationFn: ({ token, password }: { token: string; password: string }) =>
       PasswordService.resetPassword(token, password),
     onSuccess: () => {
+      toast.success('Đặt lại mật khẩu thành công!');
       // Redirect to login after successful reset
       router.push('/login?message=password-reset-success');
     },
-    onError: (error : any) => {
-      console.error('Reset password error:', parseAuthError(error));
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Reset password error:', errorMessage);
+      toast.error(errorMessage);
     },
   });
 };
@@ -274,8 +326,13 @@ export const useChangePassword = () => {
       currentPassword: string; 
       newPassword: string;
     }) => PasswordService.changePassword(currentPassword, newPassword),
-    onError: (error : any) => {
-      console.error('Change password error:', parseAuthError(error));
+    onSuccess: () => {
+      toast.success('Đổi mật khẩu thành công!');
+    },
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Change password error:', errorMessage);
+      toast.error(errorMessage);
     },
   });
 };
@@ -286,8 +343,13 @@ export const useChangePassword = () => {
 export const useResendVerification = () => {
   return useMutation({
     mutationFn: () => EmailVerificationService.resendVerificationEmail(),
-    onError: (error : any) => {
-      console.error('Resend verification error:', parseAuthError(error));
+    onSuccess: () => {
+      toast.success('Email xác thực đã được gửi lại!');
+    },
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Resend verification error:', errorMessage);
+      toast.error(errorMessage);
     },
   });
 };
@@ -301,11 +363,14 @@ export const useVerifyEmail = () => {
   return useMutation({
     mutationFn: (token: string) => EmailVerificationService.verifyEmail(token),
     onSuccess: () => {
+      toast.success('Email đã được xác thực thành công!');
       // Invalidate user query to refetch updated verification status
       queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEYS.user });
     },
-    onError: (error : any) => {
-      console.error('Verify email error:', parseAuthError(error));
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Verify email error:', errorMessage);
+      toast.error(errorMessage);
     },
   });
 };
@@ -329,18 +394,35 @@ export const useSocialAuth = () => {
     mutationFn: ({ provider, code }: { provider: 'google' | 'facebook'; code: string }) =>
       AuthService.handleSocialCallback(provider, code),
     onSuccess: (data: AuthResponse) => {
-      // Lưu tokens và user vào storage
-      setStoredTokens(data.accessToken, data.refreshToken);
-      setStoredUser(data.user);
+      try {
+        console.log('Social auth response:', data);
 
-      // Update cache
-      queryClient.setQueryData(AUTH_QUERY_KEYS.user, data.user);
+        // Check if response has required fields
+        if (!data.accessToken || !data.user) {
+          console.error('Invalid social auth response:', data);
+          throw new Error('Phản hồi không hợp lệ từ máy chủ');
+        }
 
-      // Redirect to dashboard
-      router.push('/dashboard');
+        // Lưu tokens và user vào storage
+        setStoredTokens(data.accessToken, data.refreshToken);
+        setStoredUser(data.user);
+
+        // Update cache
+        queryClient.setQueryData(AUTH_QUERY_KEYS.user, data.user);
+
+        toast.success('Đăng nhập thành công!');
+        
+        // Redirect to dashboard
+        router.push('/dashboard');
+      } catch (error) {
+        console.error('Social auth success handler error:', error);
+        toast.error('Có lỗi xảy ra khi xử lý đăng nhập');
+      }
     },
-    onError: (error : any) => {
-      console.error('Social auth error:', parseAuthError(error));
+    onError: (error: any) => {
+      const errorMessage = parseAuthError(error);
+      console.error('Social auth error:', errorMessage);
+      toast.error(errorMessage);
       router.push('/login?error=social-auth-failed');
     },
   });

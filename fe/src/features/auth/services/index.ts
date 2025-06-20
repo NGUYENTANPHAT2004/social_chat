@@ -1,5 +1,3 @@
-// src/features/auth/services/index.ts
-
 import { apiClient } from '../../../shared/api/client';
 import type {
   LoginRequest,
@@ -23,201 +21,256 @@ const AUTH_ENDPOINTS = {
   FACEBOOK_CALLBACK: '/auth/facebook/callback',
 } as const;
 
+// Helper: unwrap API response
+const unwrapResponse = <T extends object>(response: ApiResponse<T> | T): T => {
+  if ('data' in response && response.data) return response.data;
+  return response as T;
+};
+
+// Debug function to safely log responses
+const debugResponse = (endpoint: string, response: any) => {
+  console.group(`🔍 API Response Debug: ${endpoint}`);
+  console.log('Status:', response.status);
+  console.log('Headers:', response.headers);
+  console.log('Raw Data:', response.data);
+  if (response.data) {
+    console.group('Auth Fields Check:');
+    console.log('Has accessToken:', !!response.data.accessToken);
+    console.log('Has user:', !!response.data.user);
+    console.log('Has refreshToken:', !!response.data.refreshToken);
+    if (response.data.data) {
+      console.log('--- In nested data ---');
+      console.log('Has data.accessToken:', !!response.data.data.accessToken);
+      console.log('Has data.user:', !!response.data.data.user);
+      console.log('Has data.refreshToken:', !!response.data.data.refreshToken);
+    }
+    console.groupEnd();
+  }
+  console.groupEnd();
+};
+
 export class AuthService {
-  /**
-   * Đăng nhập người dùng
-   */
   static async login(data: LoginRequest): Promise<AuthResponse> {
-    const response = await apiClient.post<ApiResponse<AuthResponse>>(
-      AUTH_ENDPOINTS.LOGIN,
-      data
-    );
-    return response.data.data;
+    try {
+      const response = await apiClient.post<ApiResponse<AuthResponse>>(
+        AUTH_ENDPOINTS.LOGIN,
+        data
+      );
+      debugResponse('LOGIN', response);
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Login service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Đăng ký người dùng mới
-   */
   static async register(data: RegisterRequest): Promise<AuthResponse> {
-    const response = await apiClient.post<ApiResponse<AuthResponse>>(
-      AUTH_ENDPOINTS.REGISTER,
-      data
-    );
-    return response.data.data;
+    try {
+      const response = await apiClient.post<ApiResponse<AuthResponse>>(
+        AUTH_ENDPOINTS.REGISTER,
+        data
+      );
+      debugResponse('REGISTER', response);
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Register service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Làm mới access token
-   */
   static async refreshToken(refreshToken: string): Promise<AuthTokens> {
-    const response = await apiClient.post<ApiResponse<AuthTokens>>(
-      AUTH_ENDPOINTS.REFRESH,
-      { refreshToken }
-    );
-    return response.data.data;
+    try {
+      const response = await apiClient.post<ApiResponse<AuthTokens>>(
+        AUTH_ENDPOINTS.REFRESH,
+        { refreshToken }
+      );
+      debugResponse('REFRESH', response);
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Refresh token service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Lấy thông tin profile người dùng hiện tại
-   */
   static async getProfile(): Promise<User> {
-    const response = await apiClient.get<ApiResponse<User>>(AUTH_ENDPOINTS.ME);
-    return response.data.data;
+    try {
+      const response = await apiClient.get<ApiResponse<User>>(AUTH_ENDPOINTS.ME);
+      debugResponse('GET_PROFILE', response);
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Get profile service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Đăng xuất người dùng
-   */
   static async logout(refreshToken: string): Promise<void> {
-    await apiClient.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
+    try {
+      await apiClient.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
+    } catch (error) {
+      console.error('Logout service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Kiểm tra trạng thái đăng nhập
-   */
   static async verifyAuth(): Promise<User> {
     return this.getProfile();
   }
 
-  /**
-   * Đăng nhập bằng Google
-   */
   static getGoogleAuthUrl(): string {
-    // Trả về URL cho Google OAuth
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
     return `${baseUrl}${AUTH_ENDPOINTS.GOOGLE}`;
   }
 
-  /**
-   * Đăng nhập bằng Facebook
-   */
   static getFacebookAuthUrl(): string {
-    // Trả về URL cho Facebook OAuth
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
     return `${baseUrl}${AUTH_ENDPOINTS.FACEBOOK}`;
   }
 
-  /**
-   * Xử lý callback từ social auth
-   */
   static async handleSocialCallback(
     provider: 'google' | 'facebook',
     code: string
   ): Promise<AuthResponse> {
-    const endpoint = provider === 'google' 
-      ? AUTH_ENDPOINTS.GOOGLE_CALLBACK 
-      : AUTH_ENDPOINTS.FACEBOOK_CALLBACK;
-    
-    const response = await apiClient.get<ApiResponse<AuthResponse>>(
-      `${endpoint}?code=${code}`
-    );
-    return response.data.data;
+    try {
+      const endpoint =
+        provider === 'google'
+          ? AUTH_ENDPOINTS.GOOGLE_CALLBACK
+          : AUTH_ENDPOINTS.FACEBOOK_CALLBACK;
+
+      const response = await apiClient.get<ApiResponse<AuthResponse>>(
+        `${endpoint}?code=${code}`
+      );
+
+      debugResponse(`SOCIAL_CALLBACK_${provider.toUpperCase()}`, response);
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Social auth callback service error:', error);
+      throw error;
+    }
   }
 }
 
-// Password utilities service
+// Password Service
 export class PasswordService {
-  /**
-   * Gửi email reset password
-   */
   static async sendResetEmail(email: string): Promise<void> {
-    await apiClient.post('/auth/forgot-password', { email });
+    try {
+      await apiClient.post('/auth/forgot-password', { email });
+    } catch (error) {
+      console.error('Send reset email service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Reset password với token
-   */
   static async resetPassword(token: string, newPassword: string): Promise<void> {
-    await apiClient.post('/auth/reset-password', {
-      token,
-      password: newPassword,
-    });
+    try {
+      await apiClient.post('/auth/reset-password', {
+        token,
+        password: newPassword,
+      });
+    } catch (error) {
+      console.error('Reset password service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Thay đổi password (khi đã đăng nhập)
-   */
-  static async changePassword(
-    currentPassword: string,
-    newPassword: string
-  ): Promise<void> {
-    await apiClient.post('/auth/change-password', {
-      currentPassword,
-      newPassword,
-    });
+  static async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    try {
+      await apiClient.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
+      });
+    } catch (error) {
+      console.error('Change password service error:', error);
+      throw error;
+    }
   }
 }
 
-// Email verification service
+// Email Verification
 export class EmailVerificationService {
-  /**
-   * Gửi lại email xác thực
-   */
   static async resendVerificationEmail(): Promise<void> {
-    await apiClient.post('/auth/resend-verification');
+    try {
+      await apiClient.post('/auth/resend-verification');
+    } catch (error) {
+      console.error('Resend verification service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Xác thực email với token
-   */
   static async verifyEmail(token: string): Promise<void> {
-    await apiClient.post('/auth/verify-email', { token });
+    try {
+      await apiClient.post('/auth/verify-email', { token });
+    } catch (error) {
+      console.error('Verify email service error:', error);
+      throw error;
+    }
   }
 }
 
-// Two-factor authentication service
+// 2FA Service
 export class TwoFactorService {
-  /**
-   * Bật 2FA
-   */
   static async enable2FA(): Promise<{ qrCode: string; secret: string }> {
-    const response = await apiClient.post<ApiResponse<{ qrCode: string; secret: string }>>(
-      '/auth/2fa/enable'
-    );
-    return response.data.data;
+    try {
+      const response = await apiClient.post<ApiResponse<{ qrCode: string; secret: string }>>(
+        '/auth/2fa/enable'
+      );
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Enable 2FA service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Tắt 2FA
-   */
   static async disable2FA(code: string): Promise<void> {
-    await apiClient.post('/auth/2fa/disable', { code });
+    try {
+      await apiClient.post('/auth/2fa/disable', { code });
+    } catch (error) {
+      console.error('Disable 2FA service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Xác thực 2FA code
-   */
   static async verify2FA(code: string): Promise<AuthTokens> {
-    const response = await apiClient.post<ApiResponse<AuthTokens>>(
-      '/auth/2fa/verify',
-      { code }
-    );
-    return response.data.data;
+    try {
+      const response = await apiClient.post<ApiResponse<AuthTokens>>(
+        '/auth/2fa/verify',
+        { code }
+      );
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Verify 2FA service error:', error);
+      throw error;
+    }
   }
 }
 
-// Session management service
+// Session Service
 export class SessionService {
-  /**
-   * Lấy danh sách sessions đang hoạt động
-   */
   static async getActiveSessions(): Promise<any[]> {
-    const response = await apiClient.get<ApiResponse<any[]>>('/auth/sessions');
-    return response.data.data;
+    try {
+      const response = await apiClient.get<ApiResponse<any[]>>('/auth/sessions');
+      return unwrapResponse(response.data);
+    } catch (error) {
+      console.error('Get sessions service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Đăng xuất khỏi session cụ thể
-   */
   static async terminateSession(sessionId: string): Promise<void> {
-    await apiClient.delete(`/auth/sessions/${sessionId}`);
+    try {
+      await apiClient.delete(`/auth/sessions/${sessionId}`);
+    } catch (error) {
+      console.error('Terminate session service error:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Đăng xuất khỏi tất cả sessions
-   */
   static async terminateAllSessions(): Promise<void> {
-    await apiClient.delete('/auth/sessions/all');
+    try {
+      await apiClient.delete('/auth/sessions/all');
+    } catch (error) {
+      console.error('Terminate all sessions service error:', error);
+      throw error;
+    }
   }
 }
 

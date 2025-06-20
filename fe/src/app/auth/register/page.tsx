@@ -73,6 +73,9 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Clear previous errors
+    setErrors([]);
+    
     // Validate form
     const validationErrors = validateRegisterForm(formData);
     if (validationErrors.length > 0) {
@@ -84,6 +87,7 @@ export default function RegisterPage() {
       await register.mutateAsync(formData);
     } catch (error) {
       console.error('Register failed:', error);
+      // Error is handled by the mutation's onError callback
     }
   };
 
@@ -114,6 +118,17 @@ export default function RegisterPage() {
     if (score < 3) return 'Yếu';
     if (score < 5) return 'Trung bình';
     return 'Mạnh';
+  };
+
+  // Safe error message rendering
+  const renderErrorMessage = (error: any) => {
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error?.message) {
+      return error.message;
+    }
+    return 'Đã xảy ra lỗi không xác định';
   };
 
   return (
@@ -314,10 +329,10 @@ export default function RegisterPage() {
             <p className="text-red-400 text-sm">{getFieldError('agreeToTerms')}</p>
           )}
 
-          {/* Register Error */}
+          {/* Register Error - Safe rendering */}
           {register.error && (
             <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-3 rounded-lg">
-              {register.error}
+              {renderErrorMessage(register.error)}
             </div>
           )}
 
@@ -353,8 +368,8 @@ export default function RegisterPage() {
           <Button
             type="button"
             onClick={() => handleSocialLogin('google')}
-            disabled={socialLoading}
-            className="flex items-center justify-center px-4 py-3 border border-gray-600 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+            disabled={socialLoading || register.isPending}
+            className="flex items-center justify-center px-4 py-3 border border-gray-600 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors disabled:opacity-50"
           >
             <Chrome className="w-5 h-5 mr-2" />
             Google
@@ -363,8 +378,8 @@ export default function RegisterPage() {
           <Button
             type="button"
             onClick={() => handleSocialLogin('facebook')}
-            disabled={socialLoading}
-            className="flex items-center justify-center px-4 py-3 border border-gray-600 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+            disabled={socialLoading || register.isPending}
+            className="flex items-center justify-center px-4 py-3 border border-gray-600 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors disabled:opacity-50"
           >
             <Facebook className="w-5 h-5 mr-2" />
             Facebook

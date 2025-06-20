@@ -7,6 +7,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Toaster } from 'react-hot-toast';
 
 import { useAuthInitialization } from '@/features/auth';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Create a client
 const createQueryClient = () => {
@@ -40,11 +41,18 @@ const createQueryClient = () => {
 function AuthInitializer({ children }: { children: React.ReactNode }) {
   const { initializeAuth } = useAuthInitialization();
   const [isInitialized, setIsInitialized] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initialize auth state from localStorage
-    initializeAuth();
-    setIsInitialized(true);
+    try {
+      // Initialize auth state from localStorage
+      initializeAuth();
+      setIsInitialized(true);
+    } catch (error) {
+      console.error('Auth initialization error:', error);
+      setInitError(error instanceof Error ? error.message : 'Lỗi khởi tạo xác thực');
+      setIsInitialized(true); // Still set to true to not block the app
+    }
   }, [initializeAuth]);
 
   // Show loading while initializing
@@ -59,85 +67,126 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Show error if auth initialization failed
+  if (initError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center max-w-md">
+          <div className="bg-red-500/10 border border-red-500 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-red-400 mb-2">
+              Lỗi khởi tạo
+            </h2>
+            <p className="text-gray-300 mb-4">{initError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Thử lại
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return <>{children}</>;
 }
 
 // Theme provider component
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    // Apply theme based on user preference or system preference
-    const theme = localStorage.getItem('theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
-    
-    if (theme === 'dark') {
+    try {
+      // Apply theme based on user preference or system preference
+      const theme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+      
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    } catch (error) {
+      console.error('Theme initialization error:', error);
+      // Fallback to dark theme
+      document.documentElement.setAttribute('data-theme', 'dark');
       document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
     }
   }, []);
 
   return <>{children}</>;
 }
 
-// Error boundary component
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error?: Error }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
+// Custom error handler for React Query
+const handleQueryError = (error: any) => {
+  console.error('React Query Error:', error);
+  
+  // Don't show toast for common errors that are handled elsewhere
+  if (error?.status === 401 || error?.status === 403) {
+    return;
   }
 
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
-    
-    // You can also log the error to an error reporting service
-    // logErrorToService(error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-900">
-          <div className="max-w-md w-full text-center">
-            <div className="bg-red-500/10 border border-red-500 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-red-400 mb-2">
-                Đã xảy ra lỗi
-              </h2>
-              <p className="text-gray-300 mb-4">
-                Ứng dụng gặp sự cố. Vui lòng tải lại trang.
-              </p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                Tải lại trang
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
+  // Show generic error toast for unexpected errors
+  import('react-hot-toast').then(({ default: toast }) => {
+    toast.error('Đã xảy ra lỗi không mong muốn');
+  });
+};
 
 // Main providers component
 export default function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => createQueryClient());
+  const [queryClient] = useState(() => {
+    const client = createQueryClient();
+    
+    // Add global error handler
+    client.setDefaultOptions({
+      ...client.getDefaultOptions(),
+      queries: {
+        ...client.getDefaultOptions().queries,
+      },
+      mutations: {
+        ...client.getDefaultOptions().mutations,
+        onError: handleQueryError,
+      },
+    });
+    
+    return client;
+  });
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('App Error Boundary:', error, errorInfo);
+        
+        // Report to monitoring service in production
+        if (process.env.NODE_ENV === 'production') {
+          // Example: Sentry.captureException(error, { extra: errorInfo });
+        }
+      }}
+    >
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthInitializer>
-            {children}
+            <ErrorBoundary
+              fallback={
+                <div className="min-h-screen flex items-center justify-center bg-gray-900">
+                  <div className="text-center">
+                    <h2 className="text-xl font-semibold text-white mb-2">
+                      Lỗi ứng dụng
+                    </h2>
+                    <p className="text-gray-300 mb-4">
+                      Có lỗi xảy ra khi tải ứng dụng
+                    </p>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Tải lại trang
+                    </button>
+                  </div>
+                </div>
+              }
+            >
+              {children}
+            </ErrorBoundary>
             
             {/* Toast notifications */}
             <Toaster
@@ -161,15 +210,26 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                     border: '1px solid #dc2626',
                   },
                 },
+                loading: {
+                  style: {
+                    background: '#1e40af',
+                    border: '1px solid #3b82f6',
+                  },
+                },
               }}
             />
             
             {/* React Query Devtools (only in development) */}
             {process.env.NODE_ENV === 'development' && (
-              <ReactQueryDevtools 
-                initialIsOpen={false}
-                buttonPosition="bottom-left"
-              />
+              <ErrorBoundary
+                fallback={<div>DevTools Error</div>}
+                onError={(error) => console.error('DevTools Error:', error)}
+              >
+                <ReactQueryDevtools 
+                  initialIsOpen={false}
+                  buttonPosition="bottom-left"
+                />
+              </ErrorBoundary>
             )}
           </AuthInitializer>
         </ThemeProvider>
@@ -178,18 +238,28 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Hook to access query client
-export const useQueryClient : any = () => {
-  const client = useQueryClient();
-  return client;
+// Hook to access query client safely
+export const useQueryClientSafe = () => {
+  try {
+    const { useQueryClient } = require('@tanstack/react-query');
+    return useQueryClient();
+  } catch (error) {
+    console.error('Query client access error:', error);
+    return null;
+  }
 };
 
-// Utility to prefetch queries
+// Utility to prefetch queries safely
 export const prefetchQuery = async (queryKey: any[], queryFn: () => Promise<any>) => {
-  const queryClient = createQueryClient();
-  await queryClient.prefetchQuery({
-    queryKey,
-    queryFn,
-  });
-  return queryClient;
+  try {
+    const queryClient = createQueryClient();
+    await queryClient.prefetchQuery({
+      queryKey,
+      queryFn,
+    });
+    return queryClient;
+  } catch (error) {
+    console.error('Prefetch query error:', error);
+    return null;
+  }
 };

@@ -1,17 +1,34 @@
 // src/features/auth/types/index.ts
 
 export interface User {
-  id: string;
+  _id: string; // MongoDB ID
   username: string;
   email: string;
+  avatar: string;
   profile: {
     displayName: string;
-    avatar?: string;
-    bio?: string;
+    bio: string;
+    location?: string;
+    birthdate?: string | null;
+    _id: string;
   };
+  role: 'user' | 'admin' | 'moderator';
   status: 'active' | 'inactive' | 'suspended';
+  kcBalance: number;
+  trustScore: number;
+  followers: string[];
+  following: string[];
+  deviceTokens: string[];
+  pushSettings: {
+    enabled: boolean;
+    sound: boolean;
+    vibrate: boolean;
+    badge: boolean;
+    _id: string;
+  };
   createdAt: string;
   updatedAt: string;
+  __v: number;
 }
 
 export interface AuthTokens {
@@ -71,9 +88,10 @@ export interface AuthError {
 
 // API Response wrapper
 export interface ApiResponse<T> {
-  data: T;
-  message: string;
-  success: boolean;
+  data?: T;
+  message?: string;
+  success?: boolean;
+  status?: number;
 }
 
 // Form validation types
