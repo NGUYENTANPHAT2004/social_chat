@@ -5,9 +5,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { X, Search, User, MessageCircle } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import { useUserSearch } from '../../user/hooks';
+import { useUserSearch } from '../../user/hooks'; // Sử dụng user hook thật
 import { useCreateConversation } from '../hooks';
-import type { User as UserType } from '../type';
+import type { User as UserType } from '../../user/type'; // Import từ user types
 
 interface UserSearchModalProps {
   isOpen: boolean;
@@ -23,7 +23,7 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   
-  // Search users hook
+  // Sử dụng user search hook thật
   const userSearchQuery = useUserSearch(
     { q: searchQuery, limit: 10 },
     { enabled: searchQuery.length >= 2 }
@@ -41,15 +41,23 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
   }, [isOpen]);
 
   const handleStartConversation = useCallback((user: UserType) => {
+    setSelectedUser(user);
     createConversationMutation.mutate(user.id, {
       onSuccess: (conversation) => {
         onConversationCreated(conversation.id);
         onClose();
       },
+      onError: (error) => {
+        console.error('Failed to create conversation:', error);
+        setSelectedUser(null);
+      },
     });
   }, [createConversationMutation, onConversationCreated, onClose]);
 
   if (!isOpen) return null;
+
+  // Get users array from response
+  const users = userSearchQuery.data || [];
 
   return (
     <>
@@ -96,6 +104,14 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
               <div className="p-8 text-center text-gray-500">
                 <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                 <p>Type at least 2 characters to search for users</p>
+                <div className="mt-4 text-sm text-gray-400">
+                  <p>Search by:</p>
+                  <ul className="mt-2 space-y-1">
+                    <li>• Username</li>
+                    <li>• Email address</li>
+                    <li>• Display name</li>
+                  </ul>
+                </div>
               </div>
             ) : userSearchQuery.isLoading ? (
               <div className="p-8 text-center">
@@ -106,18 +122,24 @@ export const UserSearchModal: React.FC<UserSearchModalProps> = ({
               <div className="p-8 text-center text-red-500">
                 <p>Failed to search users</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  {userSearchQuery.error.message}
+                  {userSearchQuery.error?.message || 'Unknown error'}
                 </p>
+                <button
+                  onClick={() => userSearchQuery.refetch()}
+                  className="mt-3 text-blue-500 hover:text-blue-600 text-sm"
+                >
+                  Try again
+                </button>
               </div>
-            ) : (userSearchQuery.data?.length || 0) === 0 ? (
+            ) : users.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p>No users found for "{searchQuery}"</p>
+                <p>No users found for `{searchQuery}`</p>
                 <p className="text-sm mt-1">Try a different search term</p>
               </div>
             ) : (
               <div className="py-2">
-                {userSearchQuery.data?.map((user) => (
+                {users.map((user) => (
                   <UserSearchItem
                     key={user.id}
                     user={user}
@@ -163,6 +185,16 @@ const UserSearchItem: React.FC<UserSearchItemProps> = ({
   isLoading,
   isSelected,
 }) => {
+  // Handle user avatar - check different possible fields
+  const avatar = user.avatar || 
+                 (user as any).profile?.avatar || 
+                 '/images/default-avatar.png';
+  
+  // Handle display name - check different possible fields
+  const displayName = (user as any).profile?.displayName || 
+                     (user as any).displayName || 
+                     user.username;
+
   return (
     <button
       onClick={onSelect}
@@ -174,16 +206,23 @@ const UserSearchItem: React.FC<UserSearchItemProps> = ({
     >
       <div className="flex items-center space-x-3">
         <img
-          src={user.avatar || '/images/default-avatar.png'}
+          src={avatar}
           alt={user.username}
           className="w-10 h-10 rounded-full object-cover"
+          onError={(e) => {
+            // Fallback to default avatar if image fails to load
+            e.currentTarget.src = '/images/default-avatar.png';
+          }}
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 truncate">
-            {user.username}
+            {displayName}
+          </p>
+          <p className="text-xs text-gray-500 truncate">
+            @{user.username}
           </p>
           {user.email && (
-            <p className="text-sm text-gray-500 truncate">
+            <p className="text-xs text-gray-400 truncate">
               {user.email}
             </p>
           )}

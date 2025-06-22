@@ -7,8 +7,22 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import * as compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import { MediaServerService } from './module/streaming/services/media-server.service';
+
+class SocketIoAdapter extends IoAdapter {
+  createIOServer(port: number, options?: any): any {
+    const server = super.createIOServer(port, {
+      ...options,
+      cors: {
+        origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+        methods: ['GET', 'POST'],
+        credentials: true,
+      },
+      transports: ['websocket', 'polling'],
+      allowEIO3: true,
+    });
+    return server;
+  }
+}
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -17,15 +31,15 @@ async function bootstrap() {
   // Get services
   const configService = app.get(ConfigService);
   
-  // Add Socket.IO adapter
-  app.useWebSocketAdapter(new IoAdapter(app));
+  // Add Socket.IO adapter with CORS
+  app.useWebSocketAdapter(new SocketIoAdapter(app));
 
   // Global prefix
   app.setGlobalPrefix('api');
 
-  // CORS with WebSocket support
+  // CORS configuration
   app.enableCors({
-    origin: configService.get('app.corsOrigin', ['http://localhost:3000', 'http://127.0.0.1:3000']),
+    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
@@ -34,6 +48,7 @@ async function bootstrap() {
   // Security
   app.use(helmet({
     crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: false, // Disable for development
   }));
   
   // Compression
@@ -46,8 +61,13 @@ async function bootstrap() {
     transform: true,
   }));
 
-  // Global exception filter
-  app.useGlobalFilters(new AllExceptionsFilter(configService));
+  // Global exception filter - only if exists
+  try {
+    const AllExceptionsFilter = require('./common/filters/all-exceptions.filter').AllExceptionsFilter;
+    app.useGlobalFilters(new AllExceptionsFilter(configService));
+  } catch (error) {
+    logger.warn('AllExceptionsFilter not found, skipping');
+  }
 
   // Swagger documentation
   if (configService.get('app.env') !== 'production') {
@@ -59,25 +79,14 @@ async function bootstrap() {
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);
+    logger.log(`📚 Swagger docs available at: http://localhost:${configService.get('app.port', 5000)}/api/docs`);
   }
-
-  // Start media server
-  // try {
-  //   const mediaServerService = app.get(MediaServerService, { strict: false });
-  //   if (mediaServerService && typeof mediaServerService.initializeMediaServer === 'function') {
-  //     await mediaServerService.initializeMediaServer();
-  //     logger.log('Media server initialized successfully');
-  //   }
-  // } catch (error) {
-  //   logger.warn('Media server not available or failed to initialize:', error.message);
-  // }
 
   const port = configService.get('app.port', 5000);
   await app.listen(port);
 
   logger.log(`🚀 Application is running on: http://localhost:${port}`);
-  logger.log(`📚 Swagger docs available at: http://localhost:${port}/api/docs`);
-  logger.log(`🔌 WebSocket server ready for connections`);
+  logger.log(`🔌 WebSocket server ready for connections on port ${port}`);
 }
 
 bootstrap().catch((error) => {

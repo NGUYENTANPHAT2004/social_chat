@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '../../../lib/utils';
-import { MessageCircle, Users, Settings, Menu, X } from 'lucide-react';
+import { MessageCircle, Users, Settings, Menu, X, Plus } from 'lucide-react';
 
 import { useAuth } from '../../auth/hooks';
 import {
@@ -16,6 +16,7 @@ import {
   useUnreadCount,
 } from '../index';
 import { useCreateConversation } from '../hooks';
+import { UserSearchModal } from '../components/UserSearchModal';
 
 interface ChatPageProps {
   className?: string;
@@ -29,11 +30,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
   // State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [showUserSearch, setShowUserSearch] = useState(false);
   
   // Hooks
   const conversationsQuery = useConversations();
   const { connect, disconnect, isConnected } = useSocketConnection();
-  const unreadCountQuery = useUnreadCount();
+  const unreadCount = useUnreadCount();
   const createConversationMutation = useCreateConversation();
   
   // Get conversation ID from URL params
@@ -80,6 +82,11 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
     });
   };
 
+  const handleUserSearchResult = (conversationId: string) => {
+    setShowUserSearch(false);
+    handleConversationSelect(conversationId);
+  };
+
   if (!isAuthenticated || !user) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -109,7 +116,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
       )}>
         {/* Sidebar Header */}
         <div className="p-4 border-b bg-white">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <MessageCircle className="w-8 h-8 text-blue-500" />
               <h1 className="text-xl font-semibold text-gray-900">Messages</h1>
@@ -117,9 +124,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
             
             <div className="flex items-center space-x-2">
               {/* Unread count indicator */}
-              {(unreadCountQuery || 0) > 0 && (
+              {(unreadCount || 0) > 0 && (
                 <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
-                  {unreadCountQuery}
+                  {unreadCount}
                 </span>
               )}
               
@@ -138,6 +145,15 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
               </button>
             </div>
           </div>
+
+          {/* New conversation button */}
+          <button
+            onClick={() => setShowUserSearch(true)}
+            className="w-full flex items-center justify-center space-x-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Conversation</span>
+          </button>
         </div>
 
         {/* Conversations List */}
@@ -156,6 +172,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
               src={user.avatar || '/images/default-avatar.png'}
               alt={user.username}
               className="w-8 h-8 rounded-full object-cover"
+              onError={(e) => {
+                e.currentTarget.src = '/images/default-avatar.png';
+              }}
             />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">
@@ -195,9 +214,16 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
             currentUserId={user.id}
           />
         ) : (
-          <EmptyState onStartConversation={handleStartNewConversation} />
+          <EmptyState onStartConversation={() => setShowUserSearch(true)} />
         )}
       </div>
+
+      {/* User Search Modal */}
+      <UserSearchModal
+        isOpen={showUserSearch}
+        onClose={() => setShowUserSearch(false)}
+        onConversationCreated={handleUserSearchResult}
+      />
     </div>
   );
 };
@@ -206,10 +232,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({ className }) => {
  * Empty State Component
  */
 interface EmptyStateProps {
-  onStartConversation: (userId: string) => void;
+  onStartConversation: () => void;
 }
 
-const EmptyState: React.FC<EmptyStateProps> = ({  }) => {
+const EmptyState: React.FC<EmptyStateProps> = ({ onStartConversation }) => {
   return (
     <div className="flex-1 flex items-center justify-center bg-gray-50">
       <div className="text-center max-w-md mx-auto p-6">
@@ -228,20 +254,14 @@ const EmptyState: React.FC<EmptyStateProps> = ({  }) => {
         
         <div className="space-y-4">
           <button
-            onClick={() => {
-              // This could open a user search modal
-              console.log('Start new conversation');
-            }}
+            onClick={onStartConversation}
             className="w-full bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-medium"
           >
             Start New Conversation
           </button>
           
           <button
-            onClick={() => {
-              // This could open a discover people modal
-              console.log('Find friends');
-            }}
+            onClick={onStartConversation}
             className="w-full border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 transition-colors font-medium"
           >
             <Users className="w-5 h-5 inline mr-2" />

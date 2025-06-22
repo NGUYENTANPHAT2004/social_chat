@@ -1,4 +1,4 @@
-// src/features/message/components/index.ts
+// src/features/message/components/index.tsx
 
 'use client';
 
@@ -13,7 +13,6 @@ import {
   Video,
   Info,
   Paperclip,
-  
   ArrowDown,
 } from 'lucide-react';
 
@@ -43,8 +42,10 @@ import type {
   MessageItemProps,
   ChatWindowProps,
   TypingIndicatorProps,
+  MessageFormData,
 } from '../type';
 import { MessageType } from '../type';
+
 /**
  * Conversation List Component
  */
@@ -146,7 +147,6 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
   isSelected,
   onClick,
 }) => {
-  // const otherUser = getOtherUser(conversation, currentUserId);
   const avatar = getConversationAvatar(conversation, currentUserId);
   const title = getConversationTitle(conversation, currentUserId);
   const isUnread = conversation.unreadCount > 0;
@@ -554,7 +554,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyPress}
             placeholder={placeholder}
             disabled={disabled}
             rows={1}
@@ -673,7 +673,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Message input */}
       <MessageInput
-        onSendMessage={(data) => {
+        onSendMessage={(data: MessageFormData) => {
           typing.stopTyping();
           conversation.sendMessage({
             recipientId: otherUser?.id || '',

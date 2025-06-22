@@ -19,22 +19,44 @@ export class MessageService {
   private baseUrl = '/messages';
 
   /**
+   * Helper to extract data from API response
+   */
+  private extractData<T>(response: any): T {
+    // Handle different response structures
+    if (response.data) {
+      // If wrapped in data property
+      return response.data.data || response.data;
+    }
+    return response;
+  }
+
+  /**
    * Gửi tin nhắn mới
    */
   async sendMessage(data: SendMessageDto): Promise<Message> {
-    const response = await apiClient.post<Message>(`${this.baseUrl}`, data);
-    return response.data;
+    try {
+      const response = await apiClient.post<any>(`${this.baseUrl}`, data);
+      return this.extractData<Message>(response);
+    } catch (error: any) {
+      console.error('Send message error:', error);
+      throw error;
+    }
   }
 
   /**
    * Lấy danh sách cuộc trò chuyện
    */
   async getConversations(params: GetConversationsParams = {}): Promise<ConversationsResponse> {
-    const response = await apiClient.get<ConversationsResponse>(
-      `${this.baseUrl}/conversations`,
-      { params }
-    );
-    return response.data;
+    try {
+      const response = await apiClient.get<any>(
+        `${this.baseUrl}/conversations`,
+        { params }
+      );
+      return this.extractData<ConversationsResponse>(response);
+    } catch (error: any) {
+      console.error('Get conversations error:', error);
+      throw error;
+    }
   }
 
   /**
@@ -44,292 +66,182 @@ export class MessageService {
     conversationId: string,
     params: GetMessagesParams = {}
   ): Promise<MessagesResponse> {
-    const response = await apiClient.get<MessagesResponse>(
-      `${this.baseUrl}/conversations/${conversationId}`,
-      { params }
-    );
-    return response.data;
+    try {
+      const response = await apiClient.get<any>(
+        `${this.baseUrl}/conversations/${conversationId}`,
+        { params }
+      );
+      return this.extractData<MessagesResponse>(response);
+    } catch (error: any) {
+      console.error('Get conversation messages error:', error);
+      throw error;
+    }
   }
 
   /**
    * Đánh dấu đã đọc tất cả tin nhắn trong cuộc trò chuyện
    */
   async markConversationAsRead(conversationId: string): Promise<{ success: boolean; count: number }> {
-    const response = await apiClient.patch<{ success: boolean; count: number }>(
-      `${this.baseUrl}/conversations/${conversationId}/read`
-    );
-    return response.data;
+    try {
+      const response = await apiClient.patch<any>(
+        `${this.baseUrl}/conversations/${conversationId}/read`
+      );
+      return this.extractData<{ success: boolean; count: number }>(response);
+    } catch (error: any) {
+      console.error('Mark conversation as read error:', error);
+      throw error;
+    }
   }
 
   /**
    * Xóa cuộc trò chuyện
    */
   async deleteConversation(conversationId: string): Promise<{ success: boolean }> {
-    const response = await apiClient.delete<{ success: boolean }>(
-      `${this.baseUrl}/conversations/${conversationId}`
-    );
-    return response.data;
+    try {
+      const response = await apiClient.delete<any>(
+        `${this.baseUrl}/conversations/${conversationId}`
+      );
+      return this.extractData<{ success: boolean }>(response);
+    } catch (error: any) {
+      console.error('Delete conversation error:', error);
+      throw error;
+    }
   }
 
   /**
    * Lấy số lượng tin nhắn chưa đọc
    */
   async getUnreadCount(): Promise<UnreadCountResponse> {
-    const response = await apiClient.get<UnreadCountResponse>(
-      `${this.baseUrl}/unread-count`
-    );
-    return response.data;
+    try {
+      const response = await apiClient.get<any>(
+        `${this.baseUrl}/unread-count`
+      );
+      return this.extractData<UnreadCountResponse>(response);
+    } catch (error: any) {
+      console.error('Get unread count error:', error);
+      throw error;
+    }
   }
 
   /**
    * Lấy/Tạo cuộc trò chuyện với người dùng cụ thể
    */
   async getOrCreateConversation(userId: string): Promise<Conversation> {
-    const response = await apiClient.get<Conversation>(
-      `${this.baseUrl}/with/${userId}`
-    );
-    return response.data;
+    try {
+      const response = await apiClient.get<any>(
+        `${this.baseUrl}/with/${userId}`
+      );
+      return this.extractData<Conversation>(response);
+    } catch (error: any) {
+      console.error('Get or create conversation error:', error);
+      throw error;
+    }
   }
 
   /**
    * Xóa tin nhắn
    */
   async deleteMessage(messageId: string): Promise<{ success: boolean }> {
-    const response = await apiClient.delete<{ success: boolean }>(
-      `${this.baseUrl}/${messageId}`
-    );
-    return response.data;
+    try {
+      const response = await apiClient.delete<any>(
+        `${this.baseUrl}/${messageId}`
+      );
+      return this.extractData<{ success: boolean }>(response);
+    } catch (error: any) {
+      console.error('Delete message error:', error);
+      throw error;
+    }
   }
 
   /**
    * Upload ảnh cho tin nhắn
    */
   async uploadMessageImage(file: File): Promise<{ url: string }> {
-    const response = await apiClient.uploadFile<{ url: string }>(
-      '/uploads/message-images',
-      file,
-      'image'
-    );
-    return response.data;
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await apiClient.post<any>(
+        '/uploads/message-images',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return this.extractData<{ url: string }>(response);
+    } catch (error: any) {
+      console.error('Upload message image error:', error);
+      throw error;
+    }
   }
 }
 
 /**
- * Socket Service for real-time messaging
+ * Socket Service for real-time messaging - Import from separate file
  */
-import { io, Socket } from 'socket.io-client';
-import type {
-  SocketConfig,
-  SocketEventHandlers,
-  SocketMessage,
-  SocketTypingEvent,
-  SocketReadEvent,
-  NewMessageEvent,
-} from '../type';
+export { SocketService, socketService } from './socket.service';
 
-export class SocketService {
-  private socket: Socket | null = null;
-  private config: SocketConfig | null = null;
-  private handlers: SocketEventHandlers = {};
-
-  /**
-   * Khởi tạo kết nối socket
-   */
-  connect(config: SocketConfig, handlers: SocketEventHandlers = {}) {
-    this.config = config;
-    this.handlers = handlers;
-
-    const socketUrl = `${config.url}${config.namespace || '/chat'}`;
-    
-    this.socket = io(socketUrl, {
-      auth: {
-        token: config.token,
-      },
-      transports: ['websocket'],
-      autoConnect: true,
-    });
-
-    this.setupEventListeners();
-  }
-
-  /**
-   * Ngắt kết nối
-   */
-  disconnect() {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-  }
-
-  /**
-   * Kiểm tra trạng thái kết nối
-   */
-  isConnected(): boolean {
-    return this.socket?.connected || false;
-  }
-
-  /**
-   * Gửi tin nhắn qua socket
-   */
-  async sendMessage(data: SendMessageDto): Promise<SocketMessage> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket) {
-        reject(new Error('Socket not connected'));
-        return;
-      }
-
-      this.socket.emit('sendMessage', data, (response: SocketMessage) => {
-        if (response.success) {
-          resolve(response);
-        } else {
-          reject(new Error(response.error || 'Failed to send message'));
-        }
-      });
-    });
-  }
-
-  /**
-   * Đánh dấu đã đọc tin nhắn
-   */
-  async markAsRead(conversationId: string): Promise<SocketMessage> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket) {
-        reject(new Error('Socket not connected'));
-        return;
-      }
-
-      this.socket.emit('markAsRead', { conversationId }, (response: SocketMessage) => {
-        if (response.success) {
-          resolve(response);
-        } else {
-          reject(new Error(response.error || 'Failed to mark as read'));
-        }
-      });
-    });
-  }
-
-  /**
-   * Gửi sự kiện đang gõ
-   */
-  sendTyping(conversationId: string, isTyping: boolean) {
-    if (this.socket) {
-      this.socket.emit('typing', { conversationId, isTyping });
-    }
-  }
-
-  /**
-   * Cập nhật handlers
-   */
-  updateHandlers(handlers: Partial<SocketEventHandlers>) {
-    this.handlers = { ...this.handlers, ...handlers };
-  }
-
-  /**
-   * Setup event listeners
-   */
-  private setupEventListeners() {
-    if (!this.socket) return;
-
-    // Connection events
-    this.socket.on('connect', () => {
-      console.log('Socket connected');
-      this.handlers.onConnect?.();
-    });
-
-    this.socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
-      this.handlers.onDisconnect?.();
-    });
-
-    this.socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      this.handlers.onError?.(error);
-    });
-
-    // Message events
-    this.socket.on('newMessage', (data: NewMessageEvent) => {
-      console.log('New message received:', data);
-      this.handlers.onNewMessage?.(data.message);
-    });
-
-    this.socket.on('messagesRead', (data: SocketReadEvent) => {
-      console.log('Messages read:', data);
-      this.handlers.onMessagesRead?.(data);
-    });
-
-    this.socket.on('userTyping', (data: SocketTypingEvent) => {
-      console.log('User typing:', data);
-      this.handlers.onUserTyping?.(data);
-    });
-
-    // Error events
-    this.socket.on('error', (error) => {
-      console.error('Socket error:', error);
-      this.handlers.onError?.(error);
-    });
-  }
-
-  /**
-   * Lấy socket instance (for advanced usage)
-   */
-  getSocket(): Socket | null {
-    return this.socket;
-  }
-
-  /**
-   * Tham gia room
-   */
-  joinRoom(roomId: string) {
-    if (this.socket) {
-      this.socket.emit('join', roomId);
-    }
-  }
-
-  /**
-   * Rời khỏi room
-   */
-  leaveRoom(roomId: string) {
-    if (this.socket) {
-      this.socket.emit('leave', roomId);
-    }
-  }
-}
-
-// Tạo instances
+// Export singleton instance
 export const messageService = new MessageService();
-export const socketService = new SocketService();
 
-// Helper functions
-export const formatMessageTime = (date: Date): string => {
-  const now = new Date();
+// Helper functions - Updated and improved
+export const formatMessageTime = (date: Date | string): string => {
   const messageDate = new Date(date);
+  const now = new Date();
   const diffInMs = now.getTime() - messageDate.getTime();
-  const diffInHours = diffInMs / (1000 * 60 * 60);
-
-  if (diffInHours < 1) {
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-    return diffInMinutes < 1 ? 'Just now' : `${diffInMinutes}m ago`;
-  } else if (diffInHours < 24) {
-    return `${Math.floor(diffInHours)}h ago`;
-  } else {
-    return messageDate.toLocaleDateString();
+  
+  // Less than 1 minute
+  if (diffInMs < 60 * 1000) {
+    return 'Just now';
   }
+  
+  // Less than 1 hour
+  if (diffInMs < 60 * 60 * 1000) {
+    const minutes = Math.floor(diffInMs / (60 * 1000));
+    return `${minutes}m ago`;
+  }
+  
+  // Less than 24 hours
+  if (diffInMs < 24 * 60 * 60 * 1000) {
+    const hours = Math.floor(diffInMs / (60 * 60 * 1000));
+    return `${hours}h ago`;
+  }
+  
+  // More than 24 hours
+  return messageDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 };
 
-export const formatLastMessageTime = (date: Date): string => {
-  const now = new Date();
+export const formatLastMessageTime = (date: Date | string): string => {
   const messageDate = new Date(date);
+  const now = new Date();
   const diffInMs = now.getTime() - messageDate.getTime();
-  const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
-
-  if (diffInDays < 1) {
-    return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } else if (diffInDays < 7) {
-    return messageDate.toLocaleDateString([], { weekday: 'short' });
-  } else {
-    return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  
+  // Today
+  if (diffInMs < 24 * 60 * 60 * 1000) {
+    return messageDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
   }
+  
+  // This week
+  if (diffInMs < 7 * 24 * 60 * 60 * 1000) {
+    return messageDate.toLocaleDateString('en-US', { weekday: 'short' });
+  }
+  
+  // Older
+  return messageDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
 };
 
 export const truncateMessage = (content: string, maxLength: number = 50): string => {
@@ -344,7 +256,11 @@ export const getConversationTitle = (conversation: Conversation, currentUserId: 
 
 export const getConversationAvatar = (conversation: Conversation, currentUserId: string): string => {
   const otherUser = conversation.participants.find(p => p.id !== currentUserId);
-  return otherUser?.avatar || '/default-avatar.png';
+  return otherUser?.avatar || '/images/default-avatar.png';
+};
+
+export const getOtherUser = (conversation: Conversation, currentUserId: string) => {
+  return conversation.participants.find(p => p.id !== currentUserId);
 };
 
 export const isMessageFromCurrentUser = (message: Message, currentUserId: string): boolean => {
@@ -353,4 +269,46 @@ export const isMessageFromCurrentUser = (message: Message, currentUserId: string
 
 export const canDeleteMessage = (message: Message, currentUserId: string): boolean => {
   return message.sender.id === currentUserId && message.status !== 'deleted';
+};
+
+// Validation helpers
+export const validateMessageContent = (content: string): { isValid: boolean; error?: string } => {
+  if (!content || !content.trim()) {
+    return { isValid: false, error: 'Message cannot be empty' };
+  }
+  
+  if (content.length > 1000) {
+    return { isValid: false, error: 'Message is too long (max 1000 characters)' };
+  }
+  
+  return { isValid: true };
+};
+
+export const validateImageFile = (file: File): { isValid: boolean; error?: string } => {
+  // Check file type
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    return { isValid: false, error: 'Only JPEG, PNG, GIF, and WebP images are allowed' };
+  }
+  
+  // Check file size (5MB max)
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  if (file.size > maxSize) {
+    return { isValid: false, error: 'Image size must be less than 5MB' };
+  }
+  
+  return { isValid: true };
+};
+
+// Error handling helper
+export const handleMessageError = (error: any): string => {
+  if (error.response?.data?.message) {
+    return error.response.data.message;
+  }
+  
+  if (error.message) {
+    return error.message;
+  }
+  
+  return 'An unexpected error occurred';
 };
