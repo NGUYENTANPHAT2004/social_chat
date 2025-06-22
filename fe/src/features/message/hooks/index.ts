@@ -559,19 +559,3 @@ export const useMessageManagement = () => {
     prefetchMessages,
   };
 };
-
-export default {
-  useConversations,
-  useMessages,
-  useSendMessage,
-  useMarkAsRead,
-  useDeleteConversation,
-  useDeleteMessage,
-  useUnreadCount,
-  useCreateConversation,
-  useUploadMessageImage,
-  useSocketConnection,
-  useTyping,
-  useConversation,
-  useMessageManagement,
-};

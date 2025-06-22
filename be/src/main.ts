@@ -3,8 +3,9 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import * as compression from 'compression';
-import helmet from 'helmet'; // Sửa import helmet
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { MediaServerService } from './module/streaming/services/media-server.service';
@@ -15,15 +16,19 @@ async function bootstrap() {
   
   // Get services
   const configService = app.get(ConfigService);
-  const mediaServerService = app.get(MediaServerService);
+  
+  // Add Socket.IO adapter
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   // Global prefix
   app.setGlobalPrefix('api');
 
-  // CORS
+  // CORS with WebSocket support
   app.enableCors({
-    origin: configService.get('app.corsOrigin', '*'),
+    origin: configService.get('app.corsOrigin', ['http://localhost:3000', 'http://127.0.0.1:3000']),
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
   });
 
   // Security
@@ -35,10 +40,14 @@ async function bootstrap() {
   app.use(compression());
 
   // Validation
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  }));
 
   // Global exception filter
-  app.useGlobalFilters(new AllExceptionsFilter(configService)); // Sửa tham số
+  app.useGlobalFilters(new AllExceptionsFilter(configService));
 
   // Swagger documentation
   if (configService.get('app.env') !== 'production') {
@@ -53,17 +62,25 @@ async function bootstrap() {
   }
 
   // Start media server
-  try {
-    // mediaServerService.initializeMediaServer(); // Comment out nếu method không tồn tại
-  } catch (error) {
-    logger.error('Failed to initialize media server', error);
-  }
+  // try {
+  //   const mediaServerService = app.get(MediaServerService, { strict: false });
+  //   if (mediaServerService && typeof mediaServerService.initializeMediaServer === 'function') {
+  //     await mediaServerService.initializeMediaServer();
+  //     logger.log('Media server initialized successfully');
+  //   }
+  // } catch (error) {
+  //   logger.warn('Media server not available or failed to initialize:', error.message);
+  // }
 
   const port = configService.get('app.port', 5000);
   await app.listen(port);
 
-  logger.log(`Application is running on: http://localhost:${port}`);
-  logger.log(`Swagger docs available at: http://localhost:${port}/api/docs`);
+  logger.log(`🚀 Application is running on: http://localhost:${port}`);
+  logger.log(`📚 Swagger docs available at: http://localhost:${port}/api/docs`);
+  logger.log(`🔌 WebSocket server ready for connections`);
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('❌ Error starting application:', error);
+  process.exit(1);
+});
