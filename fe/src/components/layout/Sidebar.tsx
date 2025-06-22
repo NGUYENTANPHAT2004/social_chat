@@ -18,6 +18,11 @@ const navigationItems = [
     icon: '👤',
   },
   {
+    name: 'Messages',
+    href: '/messages',
+    icon: '💬',
+  },
+  {
     name: 'Search Users',
     href: '/search/users',
     icon: '🔍',

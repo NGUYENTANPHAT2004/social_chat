@@ -12,18 +12,15 @@ import { useCallback } from 'react';
 import { toast } from 'react-hot-toast';
 
 import { userService } from '../services';
-// import { useUserStore } from '../store';
 import type {
   User,
   UserStats,
   UpdateProfileDto,
   UpdateUserDto,
   UpdateSettingsDto,
-  
+  UpdatePushSettingsDto,
   UserSearchParams,
   UserListParams,
-  
-  
   PaginatedResponse,
   UserError,
 } from '../type';
@@ -50,7 +47,11 @@ export const useUser = (
 ) => {
   return useQuery({
     queryKey: USER_QUERY_KEYS.user(id),
-    queryFn: () => userService.getUserById(id),
+    queryFn: async () => {
+      const response = await userService.getUserById(id);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     enabled: !!id,
     staleTime: 5 * 60 * 1000, // 5 minutes
     ...options,
@@ -66,7 +67,11 @@ export const useUserByUsername = (
 ) => {
   return useQuery({
     queryKey: USER_QUERY_KEYS.userByUsername(username),
-    queryFn: () => userService.getUserByUsername(username),
+    queryFn: async () => {
+      const response = await userService.getUserByUsername(username);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     enabled: !!username,
     staleTime: 5 * 60 * 1000,
     ...options,
@@ -81,7 +86,11 @@ export const useCurrentProfile = (
 ) => {
   return useQuery({
     queryKey: USER_QUERY_KEYS.currentProfile(),
-    queryFn: userService.getCurrentProfile,
+    queryFn: async () => {
+      const response = await userService.getCurrentProfile();
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     staleTime: 2 * 60 * 1000, // 2 minutes
     ...options,
   });
@@ -96,7 +105,11 @@ export const useUserSearch = (
 ) => {
   return useQuery({
     queryKey: USER_QUERY_KEYS.search(params.q),
-    queryFn: () => userService.searchUsers(params),
+    queryFn: async () => {
+      const response = await userService.searchUsers(params);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     enabled: !!params.q && params.q.length >= 2,
     staleTime: 30 * 1000, // 30 seconds
     ...options,
@@ -109,18 +122,20 @@ export const useUserSearch = (
 export const useUserFollowers = (userId: string) => {
   return useInfiniteQuery({
     queryKey: USER_QUERY_KEYS.followers(userId),
-    queryFn: ({ pageParam = 1 }) =>
-      userService.getUserFollowers(userId, { page: pageParam, limit: 20 }),
+    queryFn: async ({ pageParam = 1 }) => {
+      const response = await userService.getUserFollowers(userId, { page: pageParam, limit: 20 });
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     getNextPageParam: (lastPage) => {
       const { page, totalPages } = lastPage;
       return page < totalPages ? page + 1 : undefined;
     },
-    initialPageParam: 1, // ✅ Bắt buộc khai báo
+    initialPageParam: 1,
     enabled: !!userId,
     staleTime: 2 * 60 * 1000,
   });
 };
-
 
 /**
  * Hook lấy following của user với infinite scroll
@@ -128,8 +143,11 @@ export const useUserFollowers = (userId: string) => {
 export const useUserFollowing = (userId: string) => {
   return useInfiniteQuery({
     queryKey: USER_QUERY_KEYS.following(userId),
-    queryFn: ({ pageParam = 1 }) =>
-      userService.getUserFollowing(userId, { page: pageParam, limit: 20 }),
+    queryFn: async ({ pageParam = 1 }) => {
+      const response = await userService.getUserFollowing(userId, { page: pageParam, limit: 20 });
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     getNextPageParam: (lastPage) => {
       const { page, totalPages } = lastPage;
       return page < totalPages ? page + 1 : undefined;
@@ -149,7 +167,11 @@ export const useUserStats = (
 ) => {
   return useQuery({
     queryKey: USER_QUERY_KEYS.stats(userId),
-    queryFn: () => userService.getUserStats(userId),
+    queryFn: async () => {
+      const response = await userService.getUserStats(userId);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     enabled: !!userId,
     staleTime: 5 * 60 * 1000,
     ...options,
@@ -165,7 +187,11 @@ export const useUserList = (
 ) => {
   return useQuery({
     queryKey: USER_QUERY_KEYS.list(params),
-    queryFn: () => userService.getAllUsers(params),
+    queryFn: async () => {
+      const response = await userService.getAllUsers(params);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     staleTime: 1 * 60 * 1000, // 1 minute
     ...options,
   });
@@ -180,7 +206,11 @@ export const useUpdateProfile = (
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.updateProfile,
+    mutationFn: async (data: UpdateProfileDto) => {
+      const response = await userService.updateProfile(data);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     onSuccess: (updatedUser) => {
       // Update current profile cache
       queryClient.setQueryData(USER_QUERY_KEYS.currentProfile(), updatedUser);
@@ -207,7 +237,11 @@ export const useUpdateAvatar = (
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.updateAvatar,
+    mutationFn: async (file: File) => {
+      const response = await userService.updateAvatar(file);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     onSuccess: (updatedUser) => {
       // Update current profile cache
       queryClient.setQueryData(USER_QUERY_KEYS.currentProfile(), updatedUser);
@@ -233,7 +267,11 @@ export const useUpdateSettings = (
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.updateSettings,
+    mutationFn: async (settings: UpdateSettingsDto) => {
+      const response = await userService.updateSettings(settings);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     onSuccess: (updatedUser) => {
       // Update current profile cache
       queryClient.setQueryData(USER_QUERY_KEYS.currentProfile(), updatedUser);
@@ -257,7 +295,11 @@ export const useFollowUser = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.followUser,
+    mutationFn: async (userId: string) => {
+      const response = await userService.followUser(userId);
+      // followUser might return { success: boolean } directly or wrapped
+      return response.data || response;
+    },
     onSuccess: (_, userId) => {
       // Invalidate related queries
       queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.followers(userId) });
@@ -278,7 +320,11 @@ export const useUnfollowUser = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.unfollowUser,
+    mutationFn: async (userId: string) => {
+      const response = await userService.unfollowUser(userId);
+      // unfollowUser might return { success: boolean } directly or wrapped
+      return response.data || response;
+    },
     onSuccess: (_, userId) => {
       // Invalidate related queries
       queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.followers(userId) });
@@ -319,12 +365,18 @@ export const useFollowToggle = () => {
  */
 export const useAddDeviceToken = () => {
   return useMutation({
-    mutationFn: userService.addDeviceToken,
-    onSuccess: () => {
-      toast.success('Device registered for notifications');
+    mutationFn: async (deviceToken: string) => {
+      const response = await userService.addDeviceToken(deviceToken);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
+    onSuccess: (result) => {
+      const message = result?.message || 'Device registered for notifications';
+      toast.success(message);
     },
     onError: (error) => {
       console.error('Failed to add device token:', error);
+      toast.error(error.message || 'Failed to add device token');
     },
   });
 };
@@ -334,12 +386,18 @@ export const useAddDeviceToken = () => {
  */
 export const useRemoveDeviceToken = () => {
   return useMutation({
-    mutationFn: userService.removeDeviceToken,
-    onSuccess: () => {
-      toast.success('Device unregistered from notifications');
+    mutationFn: async (deviceToken: string) => {
+      const response = await userService.removeDeviceToken(deviceToken);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
+    onSuccess: (result) => {
+      const message = result?.message || 'Device unregistered from notifications';
+      toast.success(message);
     },
     onError: (error) => {
       console.error('Failed to remove device token:', error);
+      toast.error(error.message || 'Failed to remove device token');
     },
   });
 };
@@ -351,7 +409,11 @@ export const useUpdatePushSettings = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.updatePushSettings,
+    mutationFn: async (settings: UpdatePushSettingsDto) => {
+      const response = await userService.updatePushSettings(settings);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     onSuccess: (updatedUser) => {
       // Update current profile cache
       queryClient.setQueryData(USER_QUERY_KEYS.currentProfile(), updatedUser);
@@ -375,8 +437,11 @@ export const useUpdateUser = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateUserDto }) =>
-      userService.updateUser(id, data),
+    mutationFn: async ({ id, data }: { id: string; data: UpdateUserDto }) => {
+      const response = await userService.updateUser(id, data);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     onSuccess: (updatedUser) => {
       // Update user cache
       queryClient.setQueryData(USER_QUERY_KEYS.user(updatedUser.id), updatedUser);
@@ -399,8 +464,11 @@ export const useBanUser = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
-      userService.banUser(id, reason),
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const response = await userService.banUser(id, reason);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     onSuccess: (bannedUser) => {
       // Update user cache
       queryClient.setQueryData(USER_QUERY_KEYS.user(bannedUser.id), bannedUser);
@@ -423,7 +491,11 @@ export const useUnbanUser = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.unbanUser,
+    mutationFn: async (id: string) => {
+      const response = await userService.unbanUser(id);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
     onSuccess: (unbannedUser) => {
       // Update user cache
       queryClient.setQueryData(USER_QUERY_KEYS.user(unbannedUser.id), unbannedUser);
@@ -446,15 +518,20 @@ export const useDeleteUser = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: userService.deleteUser,
-    onSuccess: (_, userId) => {
+    mutationFn: async (userId: string) => {
+      const response = await userService.deleteUser(userId);
+      // Check if response has nested data structure
+      return response.data?.data || response.data || response;
+    },
+    onSuccess: (result, userId) => {
       // Remove user from cache
       queryClient.removeQueries({ queryKey: USER_QUERY_KEYS.user(userId) });
       
       // Invalidate user list
       queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.all });
       
-      toast.success('User deleted successfully');
+      const message = result?.message || 'User deleted successfully';
+      toast.success(message);
     },
     onError: (error) => {
       toast.error(error.message || 'Failed to delete user');
@@ -490,7 +567,11 @@ export const useUserManagement = () => {
   const prefetchUser = useCallback((userId: string) => {
     queryClient.prefetchQuery({
       queryKey: USER_QUERY_KEYS.user(userId),
-      queryFn: () => userService.getUserById(userId),
+      queryFn: async () => {
+        const response = await userService.getUserById(userId);
+        // Check if response has nested data structure
+        return response.data?.data || response.data || response;
+      },
       staleTime: 5 * 60 * 1000,
     });
   }, [queryClient]);
