@@ -1,4 +1,4 @@
-// src/features/message/components/index.tsx
+// src/features/message/components/index.tsx - FIXED
 
 'use client';
 
@@ -43,11 +43,43 @@ import type {
   ChatWindowProps,
   TypingIndicatorProps,
   MessageFormData,
+  User,
 } from '../type';
 import { MessageType } from '../type';
 
 /**
- * Conversation List Component
+ * Helper functions to safely handle data - NEW
+ */
+const safeString = (value: any): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return value.toString();
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object' && value.toString) return value.toString();
+  return '';
+};
+
+const safeDate = (value: any): Date => {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? new Date() : date;
+  }
+  return new Date();
+};
+
+const safeUser = (user: any): User => {
+  if (!user) return { id: '', username: 'Unknown', avatar: '' };
+  
+  return {
+    id: safeString(user._id || user.id),
+    username: safeString(user.username || 'Unknown'),
+    avatar: safeString(user.avatar),
+    email: safeString(user.email),
+  };
+};
+
+/**
+ * Conversation List Component - FIXED
  */
 export const ConversationList: React.FC<ConversationListProps> = ({
   conversations,
@@ -62,7 +94,8 @@ export const ConversationList: React.FC<ConversationListProps> = ({
   const filteredConversations = conversations.filter(conversation => {
     if (!searchQuery) return true;
     const otherUser = getOtherUser(conversation, user?.id || '');
-    return otherUser?.username.toLowerCase().includes(searchQuery.toLowerCase());
+    const username = safeString(otherUser?.username).toLowerCase();
+    return username.includes(searchQuery.toLowerCase());
   });
 
   if (loading) {
@@ -85,7 +118,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
     return (
       <div className="p-4 text-center text-red-500">
         <p>Failed to load conversations</p>
-        <p className="text-sm text-gray-500">{error}</p>
+        <p className="text-sm text-gray-500">{safeString(error)}</p>
       </div>
     );
   }
@@ -117,11 +150,11 @@ export const ConversationList: React.FC<ConversationListProps> = ({
           <div className="space-y-1">
             {filteredConversations.map(conversation => (
               <ConversationItem
-                key={conversation.id}
+                key={safeString(conversation.id)}
                 conversation={conversation}
                 currentUserId={user?.id || ''}
-                isSelected={conversation.id === currentConversationId}
-                onClick={() => onConversationSelect(conversation.id)}
+                isSelected={safeString(conversation.id) === currentConversationId}
+                onClick={() => onConversationSelect(safeString(conversation.id))}
               />
             ))}
           </div>
@@ -132,7 +165,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
 };
 
 /**
- * Conversation Item Component
+ * Conversation Item Component - FIXED
  */
 interface ConversationItemProps {
   conversation: Conversation;
@@ -149,7 +182,12 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
 }) => {
   const avatar = getConversationAvatar(conversation, currentUserId);
   const title = getConversationTitle(conversation, currentUserId);
-  const isUnread = conversation.unreadCount > 0;
+  const isUnread = (conversation.unreadCount || 0) > 0;
+  
+  // Safely handle last message time
+  const lastMessageTime = conversation.lastMessageTime 
+    ? safeDate(conversation.lastMessageTime)
+    : null;
 
   return (
     <div
@@ -165,8 +203,10 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
           src={avatar}
           alt={title}
           className="w-12 h-12 rounded-full object-cover"
+          onError={(e) => {
+            e.currentTarget.src = '/images/default-avatar.png';
+          }}
         />
-        {/* Online status indicator could go here */}
       </div>
       
       <div className="ml-3 flex-1 min-w-0">
@@ -177,9 +217,9 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
           )}>
             {title}
           </h3>
-          {conversation.lastMessageTime && (
+          {lastMessageTime && (
             <span className="text-xs text-gray-500 ml-2">
-              {formatLastMessageTime(conversation.lastMessageTime)}
+              {formatLastMessageTime(lastMessageTime)}
             </span>
           )}
         </div>
@@ -189,7 +229,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
             'text-sm truncate',
             isUnread ? 'text-gray-900 font-medium' : 'text-gray-500'
           )}>
-            {conversation.lastMessageContent || 'No messages yet'}
+            {safeString(conversation.lastMessageContent) || 'No messages yet'}
           </p>
           {isUnread && (
             <span className="bg-blue-500 text-white text-xs rounded-full px-2 py-1 ml-2 min-w-[20px] text-center">
@@ -203,7 +243,141 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
 };
 
 /**
- * Message List Component
+ * Message Item Component - FIXED
+ */
+export const MessageItem: React.FC<MessageItemProps> = ({
+  message,
+  currentUserId,
+  showAvatar = true,
+  showTimestamp = true,
+}) => {
+  const isOwnMessage = safeString(message.sender?.id) === currentUserId;
+  const [showMenu, setShowMenu] = useState(false);
+  
+  // Safely handle message data
+  const sender = safeUser(message.sender);
+  const recipient = safeUser(message.recipient);
+  const content = safeString(message.content);
+  const createdAt = safeDate(message.createdAt);
+  const messageType = message.type || MessageType.TEXT;
+  const status = safeString(message.status);
+
+  return (
+    <div className={cn(
+      'flex items-end space-x-2',
+      isOwnMessage ? 'justify-end' : 'justify-start'
+    )}>
+      {/* Avatar for other users */}
+      {!isOwnMessage && (
+        <div className="w-8 h-8">
+          {showAvatar ? (
+            <img
+              src={sender.avatar || '/images/default-avatar.png'}
+              alt={sender.username}
+              className="w-8 h-8 rounded-full object-cover"
+              onError={(e) => {
+                e.currentTarget.src = '/images/default-avatar.png';
+              }}
+            />
+          ) : (
+            <div className="w-8 h-8" />
+          )}
+        </div>
+      )}
+
+      {/* Message content */}
+      <div className={cn(
+        'max-w-xs lg:max-w-md',
+        isOwnMessage ? 'order-1' : 'order-2'
+      )}>
+        {/* Sender name for group messages */}
+        {!isOwnMessage && showTimestamp && (
+          <p className="text-xs text-gray-500 mb-1 px-3">
+            {sender.username}
+          </p>
+        )}
+
+        <div
+          className={cn(
+            'px-4 py-2 rounded-lg relative group',
+            isOwnMessage
+              ? 'bg-blue-500 text-white rounded-br-sm'
+              : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+          )}
+          onMouseEnter={() => setShowMenu(true)}
+          onMouseLeave={() => setShowMenu(false)}
+        >
+          {/* Message content based on type */}
+          {messageType === MessageType.TEXT && (
+            <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+          )}
+          
+          {messageType === MessageType.IMAGE && (
+            <div>
+              {message.image && (
+                <img
+                  src={safeString(message.image)}
+                  alt="Shared image"
+                  className="rounded-lg max-w-full h-auto mb-2"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              )}
+              {content && (
+                <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+              )}
+            </div>
+          )}
+
+          {messageType === MessageType.GIFT && (
+            <div className="flex items-center space-x-2">
+              <span className="text-2xl">🎁</span>
+              <p className="text-sm">{content}</p>
+            </div>
+          )}
+
+          {/* Message menu */}
+          {showMenu && (
+            <button
+              className={cn(
+                'absolute top-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
+                isOwnMessage
+                  ? '-left-8 bg-gray-100 text-gray-600'
+                  : '-right-8 bg-gray-100 text-gray-600'
+              )}
+            >
+              <MoreVertical className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* Timestamp and status */}
+        {showTimestamp && (
+          <div className={cn(
+            'flex items-center mt-1 space-x-1 text-xs text-gray-500',
+            isOwnMessage ? 'justify-end' : 'justify-start'
+          )}>
+            <span>{formatMessageTime(createdAt)}</span>
+            {isOwnMessage && (
+              <span className="text-xs">
+                {status === 'read' && '✓✓'}
+                {status === 'delivered' && '✓'}
+                {status === 'sent' && '○'}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Spacer for own messages */}
+      {isOwnMessage && <div className="w-8 h-8" />}
+    </div>
+  );
+};
+
+/**
+ * Message List Component - FIXED
  */
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
@@ -266,7 +440,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center text-red-500">
           <p>Failed to load messages</p>
-          <p className="text-sm text-gray-500">{error}</p>
+          <p className="text-sm text-gray-500">{safeString(error)}</p>
         </div>
       </div>
     );
@@ -298,7 +472,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           
           return (
             <MessageItem
-              key={message.id}
+              key={safeString(message.id)}
               message={message}
               currentUserId={currentUserId}
               showAvatar={!shouldGroup}
@@ -324,132 +498,15 @@ export const MessageList: React.FC<MessageListProps> = ({
 };
 
 /**
- * Message Item Component
- */
-export const MessageItem: React.FC<MessageItemProps> = ({
-  message,
-  currentUserId,
-  showAvatar = true,
-  showTimestamp = true,
-}) => {
-  const isOwnMessage = message.sender.id === currentUserId;
-  const [showMenu, setShowMenu] = useState(false);
-
-  return (
-    <div className={cn(
-      'flex items-end space-x-2',
-      isOwnMessage ? 'justify-end' : 'justify-start'
-    )}>
-      {/* Avatar for other users */}
-      {!isOwnMessage && (
-        <div className="w-8 h-8">
-          {showAvatar ? (
-            <img
-              src={message.sender.avatar || '/images/default-avatar.png'}
-              alt={message.sender.username}
-              className="w-8 h-8 rounded-full object-cover"
-            />
-          ) : (
-            <div className="w-8 h-8" />
-          )}
-        </div>
-      )}
-
-      {/* Message content */}
-      <div className={cn(
-        'max-w-xs lg:max-w-md',
-        isOwnMessage ? 'order-1' : 'order-2'
-      )}>
-        {/* Sender name for group messages */}
-        {!isOwnMessage && showTimestamp && (
-          <p className="text-xs text-gray-500 mb-1 px-3">
-            {message.sender.username}
-          </p>
-        )}
-
-        <div
-          className={cn(
-            'px-4 py-2 rounded-lg relative group',
-            isOwnMessage
-              ? 'bg-blue-500 text-white rounded-br-sm'
-              : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-          )}
-          onMouseEnter={() => setShowMenu(true)}
-          onMouseLeave={() => setShowMenu(false)}
-        >
-          {/* Message content based on type */}
-          {message.type === MessageType.TEXT && (
-            <p className="text-sm">{message.content}</p>
-          )}
-          
-          {message.type === MessageType.IMAGE && (
-            <div>
-              {message.image && (
-                <img
-                  src={message.image}
-                  alt="Shared image"
-                  className="rounded-lg max-w-full h-auto mb-2"
-                />
-              )}
-              {message.content && (
-                <p className="text-sm">{message.content}</p>
-              )}
-            </div>
-          )}
-
-          {message.type === MessageType.GIFT && (
-            <div className="flex items-center space-x-2">
-              <span className="text-2xl">🎁</span>
-              <p className="text-sm">{message.content}</p>
-            </div>
-          )}
-
-          {/* Message menu */}
-          {showMenu && (
-            <button
-              className={cn(
-                'absolute top-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
-                isOwnMessage
-                  ? '-left-8 bg-gray-100 text-gray-600'
-                  : '-right-8 bg-gray-100 text-gray-600'
-              )}
-            >
-              <MoreVertical className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        {/* Timestamp and status */}
-        {showTimestamp && (
-          <div className={cn(
-            'flex items-center mt-1 space-x-1 text-xs text-gray-500',
-            isOwnMessage ? 'justify-end' : 'justify-start'
-          )}>
-            <span>{formatMessageTime(message.createdAt)}</span>
-            {isOwnMessage && (
-              <span className="text-xs">
-                {message.status === 'read' && '✓✓'}
-                {message.status === 'delivered' && '✓'}
-                {message.status === 'sent' && '○'}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Spacer for own messages */}
-      {isOwnMessage && <div className="w-8 h-8" />}
-    </div>
-  );
-};
-
-/**
- * Typing Indicator Component
+ * Typing Indicator Component - FIXED
  */
 export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
   typingUsers,
 }) => {
-  if (typingUsers.length === 0) return null;
+  if (!typingUsers || typingUsers.length === 0) return null;
+
+  // Safely handle typing users
+  const safeTypingUsers = typingUsers.map(user => safeUser(user));
 
   return (
     <div className="flex items-center space-x-2 p-4 text-gray-500">
@@ -459,9 +516,9 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
       </div>
       <span className="text-sm">
-        {typingUsers.length === 1
-          ? `${typingUsers[0].username} is typing...`
-          : `${typingUsers.length} people are typing...`
+        {safeTypingUsers.length === 1
+          ? `${safeTypingUsers[0].username} is typing...`
+          : `${safeTypingUsers.length} people are typing...`
         }
       </span>
     </div>
@@ -469,7 +526,7 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
 };
 
 /**
- * Message Input Component
+ * Message Input Component - FIXED
  */
 export const MessageInput: React.FC<MessageInputProps> = ({
   onSendMessage,
@@ -482,14 +539,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const uploadMutation = useUploadMessageImage();
 
   const handleSend = useCallback(() => {
-    const validation = validateMessageContent(content);
+    const trimmedContent = content.trim();
+    const validation = validateMessageContent(trimmedContent);
     if (!validation.isValid) {
       alert(validation.error);
       return;
     }
 
     onSendMessage({
-      content: content.trim(),
+      content: trimmedContent,
       type: MessageType.TEXT,
     });
 
@@ -521,6 +579,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       setContent('');
     } catch (error) {
       console.error('Failed to upload image:', error);
+      alert('Failed to upload image');
     } finally {
       setIsUploading(false);
     }
@@ -593,7 +652,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 };
 
 /**
- * Chat Window Component
+ * Chat Window Component - FIXED
  */
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   conversationId,
@@ -627,6 +686,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   }
 
   const otherUser = getOtherUser(conversation.conversation, currentUserId);
+  const safeOtherUser = safeUser(otherUser);
 
   return (
     <div className="flex-1 flex flex-col">
@@ -634,13 +694,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <div className="border-b bg-white p-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <img
-            src={otherUser?.avatar || '/images/default-avatar.png'}
-            alt={otherUser?.username}
+            src={safeOtherUser.avatar || '/images/default-avatar.png'}
+            alt={safeOtherUser.username}
             className="w-10 h-10 rounded-full object-cover"
+            onError={(e) => {
+              e.currentTarget.src = '/images/default-avatar.png';
+            }}
           />
           <div>
             <h2 className="font-medium text-gray-900">
-              {otherUser?.username}
+              {safeOtherUser.username}
             </h2>
             <p className="text-sm text-gray-500">Online</p>
           </div>
@@ -676,14 +739,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onSendMessage={(data: MessageFormData) => {
           typing.stopTyping();
           conversation.sendMessage({
-            recipientId: otherUser?.id || '',
+            recipientId: safeOtherUser.id,
             content: data.content,
             type: data.type,
             image: data.image as string,
           });
         }}
         disabled={conversation.isSending}
-        placeholder={`Message ${otherUser?.username}...`}
+        placeholder={`Message ${safeOtherUser.username}...`}
       />
     </div>
   );
