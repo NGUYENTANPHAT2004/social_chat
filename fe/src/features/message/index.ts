@@ -4,11 +4,9 @@
 export * from './type';
 
 // Services
-export * from './services';
-export { messageService, socketService } from './services';
+export { messageService, socketService, SocketService, MessageService } from './services';
 
 // Store
-export * from './store';
 export { 
   useMessageStore, 
   useMessageActions,
@@ -19,6 +17,7 @@ export {
   useIsConnected,
   useUnreadCount as useUnreadCountStore,
   useTypingUsers,
+  setupMessageStoreSubscriptions,
 } from './store';
 
 // Hooks
@@ -49,51 +48,58 @@ export {
   TypingIndicator,
 } from './components';
 
-// Additional exports from services for backward compatibility
+// Utilities - consolidated exports
 export {
+  // Time formatting
   formatMessageTime,
   formatLastMessageTime,
-  getConversationTitle,
-  getConversationAvatar,
-  getOtherUser,
-  validateMessageContent,
-  validateImageFile,
-  truncateMessage,
-  isMessageFromCurrentUser,
-  canDeleteMessage,
-  handleMessageError,
-} from './services';
-
-// Utilities
-export {
-  shouldGroupWithPrevious,
-  scrollToBottom,
-  isScrolledToBottom,
   formatConversationTime,
+  
+  // Message utilities
+  truncateMessage,
   getMessagePreview,
   isMessageDeleted,
   canEditMessage,
+  canDeleteMessage,
+  
+  // Conversation utilities
+  getConversationTitle,
+  getConversationAvatar,
+  getOtherUser,
+  
+  // UI utilities
+  shouldGroupWithPrevious,
+  scrollToBottom,
+  isScrolledToBottom,
   groupMessagesByDate,
   searchConversations,
   filterConversationsByStatus,
   getMessageStatusIcon,
   getMessageStatusColor,
   getTypingText,
+  
+  // Validation
+  validateMessageContent,
+  validateImageFile,
+  
+  // Storage utilities
   saveDraftMessage,
   getDraftMessage,
   clearDraftMessage,
   saveLastConversation,
   getLastConversation,
+  STORAGE_KEYS,
+  
+  // Debug utilities
   logMessage,
   logConversation,
-  STORAGE_KEYS,
 } from './utils';
 
-// Re-export providers
+// Providers
 export { MessageProvider, useMessageContext } from './providers/MessageProvider';
 
-// Re-export store setup function
-export { setupMessageStoreSubscriptions } from './store';
+// Pages
+export { ChatPage } from './pages/ChatPage';
 
-// Default export for convenience
+// Default export
 export { ChatWindow as default } from './components';

@@ -12,11 +12,11 @@ import {
   ConversationList,
   ChatWindow,
   useConversations,
-  useSocketConnection,
   useUnreadCount,
 } from '../index';
 import { useCreateConversation } from '../hooks';
 import { UserSearchModal } from '../components/UserSearchModal';
+import { useSocketConnection } from '../hooks/useSocketConnection';
 
 interface ChatPageProps {
   className?: string;

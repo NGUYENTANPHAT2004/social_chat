@@ -186,121 +186,20 @@ export { SocketService, socketService } from './socket.service';
 // Export singleton instance
 export const messageService = new MessageService();
 
-// Helper functions - Updated and improved
-export const formatMessageTime = (date: Date | string): string => {
-  const messageDate = new Date(date);
-  const now = new Date();
-  const diffInMs = now.getTime() - messageDate.getTime();
-  
-  // Less than 1 minute
-  if (diffInMs < 60 * 1000) {
-    return 'Just now';
-  }
-  
-  // Less than 1 hour
-  if (diffInMs < 60 * 60 * 1000) {
-    const minutes = Math.floor(diffInMs / (60 * 1000));
-    return `${minutes}m ago`;
-  }
-  
-  // Less than 24 hours
-  if (diffInMs < 24 * 60 * 60 * 1000) {
-    const hours = Math.floor(diffInMs / (60 * 60 * 1000));
-    return `${hours}h ago`;
-  }
-  
-  // More than 24 hours
-  return messageDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-};
+// Re-export utility functions from utils (remove duplicates)
+export {
+  formatMessageTime,
+  formatLastMessageTime,
+  getConversationTitle,
+  getConversationAvatar,
+  getOtherUser,
+  validateMessageContent,
+  validateImageFile,
+  truncateMessage,
+  canDeleteMessage,
+} from '../utils';
 
-export const formatLastMessageTime = (date: Date | string): string => {
-  const messageDate = new Date(date);
-  const now = new Date();
-  const diffInMs = now.getTime() - messageDate.getTime();
-  
-  // Today
-  if (diffInMs < 24 * 60 * 60 * 1000) {
-    return messageDate.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-  }
-  
-  // This week
-  if (diffInMs < 7 * 24 * 60 * 60 * 1000) {
-    return messageDate.toLocaleDateString('en-US', { weekday: 'short' });
-  }
-  
-  // Older
-  return messageDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-};
-
-export const truncateMessage = (content: string, maxLength: number = 50): string => {
-  if (content.length <= maxLength) return content;
-  return content.substring(0, maxLength) + '...';
-};
-
-export const getConversationTitle = (conversation: Conversation, currentUserId: string): string => {
-  const otherUser = conversation.participants.find(p => p.id !== currentUserId);
-  return otherUser?.username || 'Unknown User';
-};
-
-export const getConversationAvatar = (conversation: Conversation, currentUserId: string): string => {
-  const otherUser = conversation.participants.find(p => p.id !== currentUserId);
-  return otherUser?.avatar || '/images/default-avatar.png';
-};
-
-export const getOtherUser = (conversation: Conversation, currentUserId: string) => {
-  return conversation.participants.find(p => p.id !== currentUserId);
-};
-
-export const isMessageFromCurrentUser = (message: Message, currentUserId: string): boolean => {
-  return message.sender.id === currentUserId;
-};
-
-export const canDeleteMessage = (message: Message, currentUserId: string): boolean => {
-  return message.sender.id === currentUserId && message.status !== 'deleted';
-};
-
-// Validation helpers
-export const validateMessageContent = (content: string): { isValid: boolean; error?: string } => {
-  if (!content || !content.trim()) {
-    return { isValid: false, error: 'Message cannot be empty' };
-  }
-  
-  if (content.length > 1000) {
-    return { isValid: false, error: 'Message is too long (max 1000 characters)' };
-  }
-  
-  return { isValid: true };
-};
-
-export const validateImageFile = (file: File): { isValid: boolean; error?: string } => {
-  // Check file type
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-  if (!allowedTypes.includes(file.type)) {
-    return { isValid: false, error: 'Only JPEG, PNG, GIF, and WebP images are allowed' };
-  }
-  
-  // Check file size (5MB max)
-  const maxSize = 5 * 1024 * 1024; // 5MB
-  if (file.size > maxSize) {
-    return { isValid: false, error: 'Image size must be less than 5MB' };
-  }
-  
-  return { isValid: true };
-};
-
-// Error handling helper
+// Error handling helper - unique to services
 export const handleMessageError = (error: any): string => {
   if (error.response?.data?.message) {
     return error.response.data.message;
