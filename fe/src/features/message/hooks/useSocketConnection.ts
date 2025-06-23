@@ -1,4 +1,4 @@
-// fe/src/features/message/hooks/useSocketConnection.ts - FIX
+// fe/src/features/message/hooks/useSocketConnection.ts - COMPLETE FIXED
 
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
@@ -7,21 +7,26 @@ import { getStoredTokens } from '../../auth/utils';
 import { socketService } from '../services';
 import { 
   useMessageActions, 
-  useMessageStore,
+  useMessageStore, 
   useIsConnected,
 } from '../store';
-import type { SocketEventHandlers } from '../type';
+import type { SocketEventHandlers, Message } from '../type';
 
 export const useSocketConnection = () => {
   const { user, isAuthenticated } = useAuth();
   const actions = useMessageActions();
   const isConnected = useIsConnected();
-  const connectionRef = useRef<boolean>(false);
-  const lastTokenRef = useRef<string | null>(null);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // ✅ Use refs to avoid recreating functions
+  const connectionStateRef = useRef({
+    isInitialized: false,
+    lastUserId: null as string | null,
+    lastToken: null as string | null,
+  });
 
+  // ✅ Stable connect function
   const connect = useCallback(() => {
-    if (!user || !isAuthenticated) {
+    if (!user?.id || !isAuthenticated) {
       console.log('❌ Cannot connect: user not authenticated');
       return;
     }
@@ -34,38 +39,34 @@ export const useSocketConnection = () => {
       return;
     }
 
-    // Don't reconnect if already connected with same token
-    if (connectionRef.current && isConnected && lastTokenRef.current === currentToken) {
-      console.log('ℹ️ Already connected with current token');
+    // ✅ Prevent duplicate connections
+    if (isConnected && 
+        connectionStateRef.current.lastUserId === user.id &&
+        connectionStateRef.current.lastToken === currentToken) {
+      console.log('ℹ️ Already connected with current credentials');
       return;
     }
 
-    console.log('🔌 Initiating socket connection...');
+    console.log('🔌 Initiating socket connection for user:', user.id);
     
-    // ✅ FIX: Remove /api from socket URL và fix port
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
-
-
     const config = {
-      url: baseUrl, 
+      url: baseUrl,
       token: currentToken,
       namespace: '/chat',
     };
-
-    console.log('🔧 Socket config:', config);
 
     const handlers: SocketEventHandlers = {
       onConnect: () => {
         console.log('✅ Socket connected successfully');
         actions.setConnected(true);
-        connectionRef.current = true;
-        lastTokenRef.current = currentToken;
         
-        // Clear any retry timeout
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
-          retryTimeoutRef.current = null;
-        }
+        // ✅ Update connection state
+        connectionStateRef.current = {
+          isInitialized: true,
+          lastUserId: user.id,
+          lastToken: currentToken,
+        };
 
         toast.success('Connected to chat server', { duration: 2000 });
       },
@@ -73,33 +74,24 @@ export const useSocketConnection = () => {
       onDisconnect: () => {
         console.log('❌ Socket disconnected');
         actions.setConnected(false);
-        connectionRef.current = false;
       },
       
       onError: (error) => {
         console.error('❌ Socket connection error:', error);
         actions.setConnected(false);
-        connectionRef.current = false;
         
-        // Retry connection with backoff
-        if (!retryTimeoutRef.current && !isManuallyDisconnected) {
-          retryTimeoutRef.current = setTimeout(() => {
-            console.log('🔄 Retrying socket connection...');
-            connect();
-          }, 3000);
-        }
+        // ✅ Reset connection state on error
+        connectionStateRef.current.isInitialized = false;
       },
       
-      onNewMessage: (message) => {
+      onNewMessage: (message: Message) => {
         try {
           console.log('📨 New message received:', {
             id: message.id,
             sender: message.sender?.username,
             conversation: message.conversation,
-            contentLength: message.content?.length || 0
           });
           
-          // Validate message structure
           if (!message.id || !message.sender || !message.conversation) {
             console.error('Invalid message structure:', message);
             return;
@@ -136,8 +128,7 @@ export const useSocketConnection = () => {
       
       onUserTyping: (data) => {
         try {
-          console.log('⌨️ User typing:', data);
-          if (data?.conversationId && data?.userId) {
+          if (data?.conversationId && data?.userId !== undefined) {
             if (data.isTyping) {
               actions.addTypingUser(data.conversationId, data.userId);
               
@@ -155,37 +146,42 @@ export const useSocketConnection = () => {
       },
     };
 
-    // ✅ Connect with fixed URL
     socketService.connect(config, handlers);
-  }, [user, isAuthenticated, actions, isConnected]);
+  }, [user?.id, isAuthenticated, isConnected, actions]);
 
-  // Auto disconnect when user logs out
+  // ✅ Stable disconnect function
   const disconnect = useCallback(() => {
     console.log('🔌 Disconnecting socket...');
     socketService.disconnect();
     actions.setConnected(false);
-    connectionRef.current = false;
-    lastTokenRef.current = null;
     
-    // Clear any retry timeout
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
+    // ✅ Reset connection state
+    connectionStateRef.current = {
+      isInitialized: false,
+      lastUserId: null,
+      lastToken: null,
+    };
   }, [actions]);
 
-  // Auto connect/disconnect based on auth status
+  // ✅ Single effect with proper dependency management
   useEffect(() => {
-    if (user && isAuthenticated) {
+    // ✅ Connect when user is authenticated and not already connected
+    if (user?.id && isAuthenticated && !connectionStateRef.current.isInitialized) {
       connect();
-    } else {
+    }
+    
+    // ✅ Disconnect when user logs out
+    if ((!user?.id || !isAuthenticated) && connectionStateRef.current.isInitialized) {
       disconnect();
     }
 
+    // ✅ Cleanup only on unmount or auth state change
     return () => {
-      disconnect();
+      if (connectionStateRef.current.isInitialized && (!user?.id || !isAuthenticated)) {
+        disconnect();
+      }
     };
-  }, [user, isAuthenticated, connect, disconnect]);
+  }, [user?.id, isAuthenticated, connect, disconnect]); // ✅ Minimal dependencies
 
   return {
     connect,

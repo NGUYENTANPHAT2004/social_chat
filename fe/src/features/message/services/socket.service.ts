@@ -1,4 +1,4 @@
-// src/features/message/services/socket.service.ts - FIXED
+// src/features/message/services/socket.service.ts - COMPLETE FIXED
 
 import { io, Socket } from 'socket.io-client';
 import type {
@@ -9,40 +9,85 @@ import type {
   SocketReadEvent,
 } from '../type';
 
+interface ConnectionState {
+  isManuallyDisconnected: boolean;
+  reconnectAttempts: number;
+  lastConnectTime: number;
+  lastConfig: SocketConfig | null;
+}
+
+interface Timers {
+  connectionTimeout: NodeJS.Timeout | null;
+  reconnectTimeout: NodeJS.Timeout | null;
+  heartbeatInterval: NodeJS.Timeout | null;
+}
+
 export class SocketService {
   private socket: Socket | null = null;
   private config: SocketConfig | null = null;
   private handlers: SocketEventHandlers = {};
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3; // Giảm xuống
-  private reconnectDelay = 2000; // Tăng delay
-  private isManuallyDisconnected = false;
-  private connectionTimeout: NodeJS.Timeout | null = null;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
+  
+  // ✅ Improved connection state management
+  private connectionState: ConnectionState = {
+    isManuallyDisconnected: false,
+    reconnectAttempts: 0,
+    lastConnectTime: 0,
+    lastConfig: null,
+  };
+  
+  // ✅ Connection throttling
+  private readonly maxReconnectAttempts = 3;
+  private readonly baseReconnectDelay = 3000;
+  private readonly connectThrottleMs = 2000;
+  private readonly connectionTimeoutMs = 15000;
+  
+  // ✅ Timers management
+  private timers: Timers = {
+    connectionTimeout: null,
+    reconnectTimeout: null,
+    heartbeatInterval: null,
+  };
+
+  // ✅ Typing timeouts management
+  private typingTimeouts = new Map<string, NodeJS.Timeout>();
 
   /**
-   * Connect to socket server - IMPROVED
+   * ✅ Connect with improved state management
    */
-  connect(config: SocketConfig, handlers: SocketEventHandlers = {}) {
-    this.config = config;
-    this.handlers = handlers;
-    this.isManuallyDisconnected = false;
-
+  connect(config: SocketConfig, handlers: SocketEventHandlers = {}): void {
     try {
-      // Clear any existing connection
+      // ✅ Throttle connection attempts
+      const now = Date.now();
+      if (now - this.connectionState.lastConnectTime < this.connectThrottleMs) {
+        console.log('🚫 Connection throttled, please wait...');
+        return;
+      }
+
+      // ✅ Check if already connected with same config
+      if (this.socket?.connected && this.areConfigsEqual(config, this.connectionState.lastConfig)) {
+        console.log('ℹ️ Already connected with same configuration');
+        return;
+      }
+
+      this.config = config;
+      this.handlers = handlers;
+      this.connectionState.isManuallyDisconnected = false;
+      this.connectionState.lastConnectTime = now;
+      this.connectionState.lastConfig = { ...config };
+
+      // ✅ Clean up any existing connection
       this.cleanup();
 
+      // ✅ Prepare socket URL
       const socketUrl = config.url.includes('/api') 
         ? config.url.replace('/api', '') 
         : config.url;
-      
-      // Chuẩn hóa namespace URL
       const namespace = config.namespace || '/chat';
       const fullUrl = `${socketUrl}${namespace}`;
       
       console.log('🔌 Connecting to socket:', fullUrl);
-      console.log('🔑 Token available:', !!config.token);
 
+      // ✅ Create socket with optimized config
       this.socket = io(fullUrl, {
         auth: {
           token: config.token,
@@ -50,56 +95,43 @@ export class SocketService {
         extraHeaders: {
           Authorization: `Bearer ${config.token}`,
         },
-        transports: ['websocket'], // Chỉ dùng websocket để ổn định hơn
-        timeout: 10000, // Giảm timeout
-        reconnection: false, // Tắt auto reconnect, tự quản lý
+        transports: ['websocket', 'polling'], // ✅ Allow fallback to polling
+        timeout: 10000,
+        reconnection: false, // ✅ We handle reconnection manually
         forceNew: true,
         upgrade: true,
-        rememberUpgrade: true,
+        rememberUpgrade: false, // ✅ Don't remember upgrade to avoid issues
       });
 
       this.setupEventListeners();
-      
-      // Connection timeout
-      this.connectionTimeout = setTimeout(() => {
-        if (this.socket && !this.socket.connected) {
-          console.log('⏰ Connection timeout');
-          this.handleConnectionError(new Error('Connection timeout'));
-        }
-      }, 15000);
+      this.setupConnectionTimeout();
       
     } catch (error) {
       console.error('❌ Socket connection error:', error);
-      this.handlers.onError?.(error);
+      this.handleConnectionError(error);
     }
   }
 
   /**
-   * Disconnect from socket server - IMPROVED
+   * ✅ Improved disconnect with proper cleanup
    */
-  disconnect() {
+  disconnect(): void {
     console.log('🔌 Manually disconnecting socket...');
-    this.isManuallyDisconnected = true;
-    this.reconnectAttempts = 0;
+    
+    // ✅ Set flag BEFORE cleanup to prevent reconnection
+    this.connectionState.isManuallyDisconnected = true;
+    this.connectionState.reconnectAttempts = 0;
+    
+    this.clearAllTimers();
     this.cleanup();
   }
 
   /**
-   * Clean up all connections and timers - NEW
+   * ✅ Complete cleanup of all resources
    */
-  private cleanup() {
-    // Clear timers
-    if (this.connectionTimeout) {
-      clearTimeout(this.connectionTimeout);
-      this.connectionTimeout = null;
-    }
-    
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
+  private cleanup(): void {
+    this.clearAllTimers();
 
-    // Disconnect socket
     if (this.socket) {
       this.socket.removeAllListeners();
       this.socket.disconnect();
@@ -108,27 +140,217 @@ export class SocketService {
   }
 
   /**
-   * Check if socket is connected
+   * ✅ Clear all timers
+   */
+  private clearAllTimers(): void {
+    Object.values(this.timers).forEach(timer => {
+      if (timer) clearTimeout(timer);
+    });
+    
+    this.timers = {
+      connectionTimeout: null,
+      reconnectTimeout: null,
+      heartbeatInterval: null,
+    };
+
+    // Clear typing timeouts
+    this.typingTimeouts.forEach(timeout => clearTimeout(timeout));
+    this.typingTimeouts.clear();
+  }
+
+  /**
+   * ✅ Check if socket is connected
    */
   isConnected(): boolean {
     return this.socket?.connected || false;
   }
 
   /**
-   * Send message through socket - IMPROVED ERROR HANDLING
+   * ✅ Compare configs to avoid unnecessary reconnections
+   */
+  private areConfigsEqual(config1: SocketConfig, config2: SocketConfig | null): boolean {
+    if (!config2) return false;
+    return config1.url === config2.url && 
+           config1.token === config2.token && 
+           config1.namespace === config2.namespace;
+  }
+
+  /**
+   * ✅ Setup connection timeout
+   */
+  private setupConnectionTimeout(): void {
+    this.timers.connectionTimeout = setTimeout(() => {
+      if (this.socket && !this.socket.connected) {
+        console.log('⏰ Connection timeout');
+        this.handleConnectionError(new Error('Connection timeout'));
+      }
+    }, this.connectionTimeoutMs);
+  }
+
+  /**
+   * ✅ Setup event listeners with better error handling
+   */
+  private setupEventListeners(): void {
+    if (!this.socket) return;
+
+    this.socket.on('connect', () => {
+      console.log('✅ Socket connected successfully');
+      this.connectionState.reconnectAttempts = 0;
+      
+      // ✅ Clear connection timeout
+      if (this.timers.connectionTimeout) {
+        clearTimeout(this.timers.connectionTimeout);
+        this.timers.connectionTimeout = null;
+      }
+
+      this.setupHeartbeat();
+      this.handlers.onConnect?.();
+    });
+
+    this.socket.on('disconnect', (reason: string) => {
+      console.log('❌ Socket disconnected:', reason);
+      this.stopHeartbeat();
+      this.handlers.onDisconnect?.();
+      
+      // ✅ Only attempt reconnection if not manually disconnected
+      if (!this.connectionState.isManuallyDisconnected) {
+        this.attemptReconnect(reason);
+      }
+    });
+
+    this.socket.on('connect_error', (error: Error) => {
+      console.error('❌ Socket connection error:', error.message);
+      this.handleConnectionError(error);
+    });
+
+    // ✅ Message events with improved error handling
+    this.socket.on('newMessage', (data: any) => {
+      try {
+        if (data?.message && typeof data.message === 'object') {
+          this.handlers.onNewMessage?.(data.message);
+        } else {
+          console.error('Invalid message data received:', data);
+        }
+      } catch (error) {
+        console.error('Error handling new message:', error);
+      }
+    });
+
+    this.socket.on('messagesRead', (data: SocketReadEvent) => {
+      try {
+        if (data?.conversationId) {
+          this.handlers.onMessagesRead?.(data);
+        }
+      } catch (error) {
+        console.error('Error handling messages read:', error);
+      }
+    });
+
+    this.socket.on('userTyping', (data: SocketTypingEvent) => {
+      try {
+        if (data?.conversationId && data?.userId !== undefined) {
+          this.handlers.onUserTyping?.(data);
+        }
+      } catch (error) {
+        console.error('Error handling user typing:', error);
+      }
+    });
+
+    this.socket.on('error', (error: Error) => {
+      console.error('❌ Socket error:', error);
+      this.handlers.onError?.(error);
+    });
+
+    // ✅ Health check events
+    this.socket.on('pong', () => {
+      console.log('🏓 Pong received');
+    });
+  }
+
+  /**
+   * ✅ Improved heartbeat mechanism
+   */
+  private setupHeartbeat(): void {
+    this.timers.heartbeatInterval = setInterval(() => {
+      if (this.socket?.connected) {
+        this.socket.emit('ping', { timestamp: Date.now() });
+      }
+    }, 30000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.timers.heartbeatInterval) {
+      clearInterval(this.timers.heartbeatInterval);
+      this.timers.heartbeatInterval = null;
+    }
+  }
+
+  /**
+   * ✅ Handle connection errors
+   */
+  private handleConnectionError(error: any): void {
+    if (this.timers.connectionTimeout) {
+      clearTimeout(this.timers.connectionTimeout);
+      this.timers.connectionTimeout = null;
+    }
+
+    this.handlers.onError?.(error);
+    
+    if (!this.connectionState.isManuallyDisconnected) {
+      this.attemptReconnect(error.message || 'Connection error');
+    }
+  }
+
+  /**
+   * ✅ Improved reconnection with exponential backoff
+   */
+  private attemptReconnect(reason: string): void {
+    // ✅ Comprehensive checks
+    if (this.connectionState.isManuallyDisconnected) {
+      console.log('❌ Reconnection stopped: manually disconnected');
+      return;
+    }
+
+    if (this.connectionState.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('❌ Reconnection stopped: max attempts reached');
+      return;
+    }
+
+    if (!this.config) {
+      console.log('❌ Reconnection stopped: no config available');
+      return;
+    }
+
+    // ✅ Clear any existing reconnect timeout
+    if (this.timers.reconnectTimeout) {
+      clearTimeout(this.timers.reconnectTimeout);
+    }
+
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.connectionState.reconnectAttempts), 
+      30000 // Max 30 seconds
+    );
+    
+    this.connectionState.reconnectAttempts++;
+    
+    console.log(`🔄 Attempting reconnect ${this.connectionState.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms (reason: ${reason})`);
+
+    this.timers.reconnectTimeout = setTimeout(() => {
+      if (!this.connectionState.isManuallyDisconnected && this.config) {
+        this.connect(this.config, this.handlers);
+      }
+    }, delay);
+  }
+
+  /**
+   * ✅ Send message with timeout and error handling
    */
   async sendMessage(data: any): Promise<SocketMessage> {
     return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
+      if (!this.socket?.connected) {
         reject(new Error('Socket not connected'));
         return;
       }
-
-      console.log('📤 Sending message:', { 
-        recipientId: data.recipientId,
-        contentLength: data.content?.length || 0,
-        type: data.type 
-      });
 
       const timeout = setTimeout(() => {
         reject(new Error('Message send timeout'));
@@ -136,7 +358,6 @@ export class SocketService {
 
       this.socket.emit('sendMessage', data, (response: SocketMessage) => {
         clearTimeout(timeout);
-        console.log('📥 Message response:', response);
         
         if (response?.success) {
           resolve(response);
@@ -148,11 +369,11 @@ export class SocketService {
   }
 
   /**
-   * Mark messages as read - IMPROVED
+   * ✅ Mark messages as read
    */
   async markAsRead(conversationId: string): Promise<SocketMessage> {
     return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
+      if (!this.socket?.connected) {
         reject(new Error('Socket not connected'));
         return;
       }
@@ -173,206 +394,94 @@ export class SocketService {
   }
 
   /**
-   * Send typing indicator - DEBOUNCED
+   * ✅ Send typing indicator with debouncing
    */
-  private typingTimeout: NodeJS.Timeout | null = null;
-  sendTyping(conversationId: string, isTyping: boolean) {
-    if (!this.socket || !this.socket.connected) return;
+  sendTyping(conversationId: string, isTyping: boolean): void {
+    if (!this.socket?.connected) return;
 
-    // Clear previous timeout
-    if (this.typingTimeout) {
-      clearTimeout(this.typingTimeout);
+    // ✅ Clear existing timeout for this conversation
+    const existingTimeout = this.typingTimeouts.get(conversationId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
     }
 
     this.socket.emit('typing', { conversationId, isTyping });
 
-    // Auto-stop typing after 3 seconds
+    // ✅ Auto-stop typing after 3 seconds
     if (isTyping) {
-      this.typingTimeout = setTimeout(() => {
-        if (this.socket && this.socket.connected) {
+      const timeout = setTimeout(() => {
+        if (this.socket?.connected) {
           this.socket.emit('typing', { conversationId, isTyping: false });
         }
+        this.typingTimeouts.delete(conversationId);
       }, 3000);
+      
+      this.typingTimeouts.set(conversationId, timeout);
+    } else {
+      this.typingTimeouts.delete(conversationId);
     }
   }
 
   /**
-   * Send ping to test connection
+   * ✅ Send ping to test connection
    */
-  ping() {
-    if (this.socket && this.socket.connected) {
+  ping(): void {
+    if (this.socket?.connected) {
       this.socket.emit('ping', { timestamp: Date.now() });
     }
   }
 
   /**
-   * Setup event listeners - IMPROVED
-   */
-  private setupEventListeners() {
-    if (!this.socket) return;
-
-    // Clear connection timeout on successful connect
-    this.socket.on('connect', () => {
-      console.log('✅ Socket connected successfully');
-      this.reconnectAttempts = 0;
-      
-      if (this.connectionTimeout) {
-        clearTimeout(this.connectionTimeout);
-        this.connectionTimeout = null;
-      }
-
-      // Setup heartbeat
-      this.setupHeartbeat();
-      
-      this.handlers.onConnect?.();
-    });
-
-    this.socket.on('disconnect', (reason) => {
-      console.log('❌ Socket disconnected:', reason);
-      this.stopHeartbeat();
-      this.handlers.onDisconnect?.();
-      
-      // Auto-reconnect logic
-      if (!this.isManuallyDisconnected) {
-        this.attemptReconnect(reason);
-      }
-    });
-
-    this.socket.on('connect_error', (error) => {
-      console.error('❌ Socket connection error:', error.message);
-      this.handleConnectionError(error);
-    });
-
-    // Message events với error handling tốt hơn
-    this.socket.on('newMessage', (data: any) => {
-      try {
-        console.log('📨 New message received:', data);
-        
-        // Validate message data
-        if (data?.message && typeof data.message === 'object') {
-          this.handlers.onNewMessage?.(data.message);
-        } else {
-          console.error('Invalid message data:', data);
-        }
-      } catch (error) {
-        console.error('Error handling new message:', error);
-      }
-    });
-
-    this.socket.on('messagesRead', (data: SocketReadEvent) => {
-      try {
-        console.log('👁️ Messages read:', data);
-        if (data?.conversationId) {
-          this.handlers.onMessagesRead?.(data);
-        }
-      } catch (error) {
-        console.error('Error handling messages read:', error);
-      }
-    });
-
-    this.socket.on('userTyping', (data: SocketTypingEvent) => {
-      try {
-        console.log('⌨️ User typing:', data);
-        if (data?.conversationId && data?.userId) {
-          this.handlers.onUserTyping?.(data);
-        }
-      } catch (error) {
-        console.error('Error handling user typing:', error);
-      }
-    });
-
-    // Health check events
-    this.socket.on('pong', () => {
-      console.log('🏓 Pong received');
-    });
-
-    this.socket.on('error', (error) => {
-      console.error('❌ Socket error:', error);
-      this.handlers.onError?.(error);
-    });
-  }
-
-  /**
-   * Setup heartbeat to maintain connection - NEW
-   */
-  private setupHeartbeat() {
-    this.heartbeatInterval = setInterval(() => {
-      if (this.socket && this.socket.connected) {
-        this.ping();
-      }
-    }, 30000); // Ping every 30 seconds
-  }
-
-  /**
-   * Stop heartbeat - NEW
-   */
-  private stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-  }
-
-  /**
-   * Handle connection errors - NEW
-   */
-  private handleConnectionError(error: any) {
-    if (this.connectionTimeout) {
-      clearTimeout(this.connectionTimeout);
-      this.connectionTimeout = null;
-    }
-
-    this.handlers.onError?.(error);
-    
-    if (!this.isManuallyDisconnected) {
-      this.attemptReconnect(error.message || 'Connection error');
-    }
-  }
-
-  /**
-   * Attempt reconnection with improved logic - IMPROVED
-   */
-  private attemptReconnect(reason: string) {
-    if (this.isManuallyDisconnected || 
-        this.reconnectAttempts >= this.maxReconnectAttempts ||
-        !this.config) {
-      console.log('❌ Reconnection stopped:', { 
-        manual: this.isManuallyDisconnected,
-        attempts: this.reconnectAttempts,
-        maxAttempts: this.maxReconnectAttempts 
-      });
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = Math.min(
-      this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1), 
-      10000
-    );
-    
-    console.log(`🔄 Attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms (reason: ${reason})`);
-
-    setTimeout(() => {
-      if (!this.isManuallyDisconnected && this.config) {
-        this.connect(this.config, this.handlers);
-      }
-    }, delay);
-  }
-
-  /**
-   * Get socket instance
+   * ✅ Get socket instance (for advanced usage)
    */
   getSocket(): Socket | null {
     return this.socket;
   }
 
   /**
-   * Update event handlers
+   * ✅ Update event handlers
    */
-  updateHandlers(handlers: Partial<SocketEventHandlers>) {
+  updateHandlers(handlers: Partial<SocketEventHandlers>): void {
     this.handlers = { ...this.handlers, ...handlers };
+  }
+
+  /**
+   * ✅ Get connection status and info
+   */
+  getConnectionInfo() {
+    return {
+      isConnected: this.isConnected(),
+      reconnectAttempts: this.connectionState.reconnectAttempts,
+      isManuallyDisconnected: this.connectionState.isManuallyDisconnected,
+      lastConnectTime: this.connectionState.lastConnectTime,
+      hasActiveTimers: {
+        connectionTimeout: !!this.timers.connectionTimeout,
+        reconnectTimeout: !!this.timers.reconnectTimeout,
+        heartbeatInterval: !!this.timers.heartbeatInterval,
+      },
+      typingTimeoutsCount: this.typingTimeouts.size,
+    };
+  }
+
+  /**
+   * ✅ Force reset connection state (for debugging)
+   */
+  resetConnectionState(): void {
+    console.log('🔄 Resetting connection state...');
+    this.connectionState = {
+      isManuallyDisconnected: false,
+      reconnectAttempts: 0,
+      lastConnectTime: 0,
+      lastConfig: null,
+    };
+    this.clearAllTimers();
   }
 }
 
-// Export singleton instance
+// ✅ Export singleton instance
 export const socketService = new SocketService();
+
+// ✅ Make available for debugging in development
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  (window as any).socketService = socketService;
+}
