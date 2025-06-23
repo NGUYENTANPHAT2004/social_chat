@@ -1,3 +1,4 @@
+// fe/src/features/message/hooks/useSocketConnection.ts - FIX
 
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
@@ -11,9 +12,6 @@ import {
 } from '../store';
 import type { SocketEventHandlers } from '../type';
 
-/**
- * Hook for managing Socket.IO connection - FIXED VERSION
- */
 export const useSocketConnection = () => {
   const { user, isAuthenticated } = useAuth();
   const actions = useMessageActions();
@@ -44,11 +42,17 @@ export const useSocketConnection = () => {
 
     console.log('🔌 Initiating socket connection...');
     
+    // ✅ FIX: Remove /api from socket URL và fix port
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+
+
     const config = {
-      url: process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api', '') || 'http://localhost:5000',
+      url: baseUrl, 
       token: currentToken,
       namespace: '/chat',
     };
+
+    console.log('🔧 Socket config:', config);
 
     const handlers: SocketEventHandlers = {
       onConnect: () => {
@@ -63,18 +67,27 @@ export const useSocketConnection = () => {
           retryTimeoutRef.current = null;
         }
 
-        // Show success toast only on first connect or after error
-        if (!isConnected) {
-          toast.success('Connected to chat server', { duration: 2000 });
-        }
+        toast.success('Connected to chat server', { duration: 2000 });
       },
       
       onDisconnect: () => {
         console.log('❌ Socket disconnected');
         actions.setConnected(false);
         connectionRef.current = false;
+      },
+      
+      onError: (error) => {
+        console.error('❌ Socket connection error:', error);
+        actions.setConnected(false);
+        connectionRef.current = false;
         
-        // Don't show error toast immediately, might be temporary
+        // Retry connection with backoff
+        if (!retryTimeoutRef.current && !isManuallyDisconnected) {
+          retryTimeoutRef.current = setTimeout(() => {
+            console.log('🔄 Retrying socket connection...');
+            connect();
+          }, 3000);
+        }
       },
       
       onNewMessage: (message) => {
@@ -99,7 +112,6 @@ export const useSocketConnection = () => {
           if (message.conversation !== currentConversationId) {
             actions.incrementUnreadCount();
             
-            // Show toast notification with proper data
             const senderName = message.sender?.username || 'Someone';
             toast.success(`New message from ${senderName}`, {
               duration: 3000,
@@ -141,139 +153,43 @@ export const useSocketConnection = () => {
           console.error('Error handling user typing:', error);
         }
       },
-      
-      onError: (error) => {
-        console.error('❌ Socket error:', error);
-        actions.setConnected(false);
-        connectionRef.current = false;
-        
-        // Show error toast for non-auth errors
-        const errorMessage = error?.message || 'Connection error';
-        if (!errorMessage.includes('authentication') && 
-            !errorMessage.includes('token') &&
-            !errorMessage.includes('unauthorized')) {
-          toast.error(`Connection error: ${errorMessage}`, { duration: 4000 });
-        }
-        
-        // Try to reconnect after a delay
-        if (!retryTimeoutRef.current && isAuthenticated) {
-          retryTimeoutRef.current = setTimeout(() => {
-            console.log('🔄 Retrying connection after error...');
-            retryTimeoutRef.current = null;
-            connect();
-          }, 5000);
-        }
-      },
     };
 
-    try {
-      socketService.connect(config, handlers);
-    } catch (error) {
-      console.error('❌ Failed to connect socket:', error);
-      actions.setConnected(false);
-      connectionRef.current = false;
-      
-      toast.error('Failed to connect to chat server', { duration: 4000 });
-    }
+    // ✅ Connect with fixed URL
+    socketService.connect(config, handlers);
   }, [user, isAuthenticated, actions, isConnected]);
 
+  // Auto disconnect when user logs out
   const disconnect = useCallback(() => {
     console.log('🔌 Disconnecting socket...');
-    
-    // Clear retry timeout
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-    
     socketService.disconnect();
     actions.setConnected(false);
     connectionRef.current = false;
     lastTokenRef.current = null;
+    
+    // Clear any retry timeout
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
   }, [actions]);
 
-  const reconnect = useCallback(() => {
-    console.log('🔄 Reconnecting socket...');
-    disconnect();
-    setTimeout(connect, 1000);
-  }, [connect, disconnect]);
-
-  // Auto connect/disconnect based on authentication
+  // Auto connect/disconnect based on auth status
   useEffect(() => {
-    if (isAuthenticated && user) {
-      // Delay connection to ensure auth is fully set up
-      const timer = setTimeout(connect, 500);
-      return () => clearTimeout(timer);
+    if (user && isAuthenticated) {
+      connect();
     } else {
       disconnect();
-      actions.reset();
     }
-  }, [isAuthenticated, user, connect, disconnect, actions]);
 
-  // Handle token refresh - Listen for auth storage changes
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'auth_access_token' && e.newValue) {
-        const newToken = e.newValue;
-        
-        if (newToken && newToken !== lastTokenRef.current && connectionRef.current) {
-          console.log('🔄 Token refreshed, reconnecting socket...');
-          reconnect();
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [reconnect]);
-
-  // Periodic connection health check
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const healthCheck = setInterval(() => {
-      if (socketService.isConnected()) {
-        socketService.ping();
-      } else if (connectionRef.current) {
-        console.log('🔄 Connection lost, attempting reconnect...');
-        reconnect();
-      }
-    }, 30000); // Check every 30 seconds
-
-    return () => clearInterval(healthCheck);
-  }, [isConnected, reconnect]);
-
-  // Page visibility change handling
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && isAuthenticated && user) {
-        // Page became visible, check connection
-        if (!socketService.isConnected()) {
-          console.log('🔄 Page visible, checking connection...');
-          setTimeout(connect, 1000);
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isAuthenticated, user, connect]);
-
-  // Cleanup on unmount
-  useEffect(() => {
     return () => {
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-      }
       disconnect();
     };
-  }, [disconnect]);
+  }, [user, isAuthenticated, connect, disconnect]);
 
   return {
     connect,
     disconnect,
-    reconnect,
     isConnected,
-    socketService,
   };
 };

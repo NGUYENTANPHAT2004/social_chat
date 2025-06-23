@@ -1,4 +1,4 @@
-// src/features/message/services/index.ts
+// fe/src/features/message/services/index.ts - FIXED
 
 import { apiClient } from '../../../shared/api/client';
 import type {
@@ -13,7 +13,7 @@ import type {
 } from '../type';
 
 /**
- * Message API Service
+ * Message API Service - FIXED VERSION
  */
 export class MessageService {
   private baseUrl = '/messages';
@@ -31,10 +31,31 @@ export class MessageService {
   }
 
   /**
+   * ✅ Helper to validate userId before API calls
+   */
+  private validateUserId(userId: string | undefined | null): string {
+    if (!userId || userId === 'undefined' || userId === 'null') {
+      throw new Error('Invalid userId: userId is required and cannot be undefined');
+    }
+    return userId;
+  }
+
+  /**
    * Gửi tin nhắn mới
    */
   async sendMessage(data: SendMessageDto): Promise<Message> {
     try {
+      // ✅ Validate recipientId before sending
+      if (!data.recipientId || data.recipientId === 'undefined') {
+        throw new Error('recipientId is required for sending message');
+      }
+
+      console.log('📤 Sending message:', {
+        recipientId: data.recipientId,
+        contentLength: data.content?.length || 0,
+        type: data.type
+      });
+
       const response = await apiClient.post<any>(`${this.baseUrl}`, data);
       return this.extractData<Message>(response);
     } catch (error: any) {
@@ -48,6 +69,8 @@ export class MessageService {
    */
   async getConversations(params: GetConversationsParams = {}): Promise<ConversationsResponse> {
     try {
+      console.log('📋 Getting conversations with params:', params);
+      
       const response = await apiClient.get<any>(
         `${this.baseUrl}/conversations`,
         { params }
@@ -67,6 +90,13 @@ export class MessageService {
     params: GetMessagesParams = {}
   ): Promise<MessagesResponse> {
     try {
+      // ✅ Validate conversationId
+      if (!conversationId || conversationId === 'undefined') {
+        throw new Error('conversationId is required');
+      }
+
+      console.log('💬 Getting messages for conversation:', conversationId, 'params:', params);
+
       const response = await apiClient.get<any>(
         `${this.baseUrl}/conversations/${conversationId}`,
         { params }
@@ -83,6 +113,11 @@ export class MessageService {
    */
   async markConversationAsRead(conversationId: string): Promise<{ success: boolean; count: number }> {
     try {
+      // ✅ Validate conversationId
+      if (!conversationId || conversationId === 'undefined') {
+        throw new Error('conversationId is required');
+      }
+
       const response = await apiClient.patch<any>(
         `${this.baseUrl}/conversations/${conversationId}/read`
       );
@@ -98,6 +133,11 @@ export class MessageService {
    */
   async deleteConversation(conversationId: string): Promise<{ success: boolean }> {
     try {
+      // ✅ Validate conversationId
+      if (!conversationId || conversationId === 'undefined') {
+        throw new Error('conversationId is required');
+      }
+
       const response = await apiClient.delete<any>(
         `${this.baseUrl}/conversations/${conversationId}`
       );
@@ -113,6 +153,8 @@ export class MessageService {
    */
   async getUnreadCount(): Promise<UnreadCountResponse> {
     try {
+      console.log('🔢 Getting unread count...');
+      
       const response = await apiClient.get<any>(
         `${this.baseUrl}/unread-count`
       );
@@ -124,25 +166,44 @@ export class MessageService {
   }
 
   /**
-   * Lấy/Tạo cuộc trò chuyện với người dùng cụ thể
+   * ✅ Lấy/Tạo cuộc trò chuyện với người dùng cụ thể - FIXED
    */
   async getOrCreateConversation(userId: string): Promise<Conversation> {
     try {
+      // ✅ CRITICAL FIX: Validate userId before making API call
+      const validUserId = this.validateUserId(userId);
+      
+      console.log('🔍 Getting/creating conversation with user:', validUserId);
+
       const response = await apiClient.get<any>(
-        `${this.baseUrl}/with/${userId}`
+        `${this.baseUrl}/with/${validUserId}` // This will now be /api/messages/with/validUserId
       );
-      return this.extractData<Conversation>(response);
+      
+      const conversation = this.extractData<Conversation>(response);
+      console.log('✅ Got conversation:', conversation.id);
+      
+      return conversation;
     } catch (error: any) {
-      console.error('Get or create conversation error:', error);
+      console.error('Get or create conversation error:', {
+        userId,
+        validatedUserId: this.validateUserId(userId),
+        error: error.message,
+        fullError: error
+      });
       throw error;
     }
   }
 
   /**
-   * Xóa tin nhắn
+   * ✅ Xóa tin nhắn cụ thể
    */
   async deleteMessage(messageId: string): Promise<{ success: boolean }> {
     try {
+      // ✅ Validate messageId
+      if (!messageId || messageId === 'undefined') {
+        throw new Error('messageId is required');
+      }
+
       const response = await apiClient.delete<any>(
         `${this.baseUrl}/${messageId}`
       );
@@ -152,62 +213,12 @@ export class MessageService {
       throw error;
     }
   }
-
-  /**
-   * Upload ảnh cho tin nhắn
-   */
-  async uploadMessageImage(file: File): Promise<{ url: string }> {
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const response = await apiClient.post<any>(
-        '/uploads/message-images',
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-      return this.extractData<{ url: string }>(response);
-    } catch (error: any) {
-      console.error('Upload message image error:', error);
-      throw error;
-    }
-  }
 }
-
-/**
- * Socket Service for real-time messaging - Import from separate file
- */
-export { SocketService, socketService } from './socket.service';
 
 // Export singleton instance
 export const messageService = new MessageService();
 
-// Re-export utility functions from utils (remove duplicates)
-export {
-  formatMessageTime,
-  formatLastMessageTime,
-  getConversationTitle,
-  getConversationAvatar,
-  getOtherUser,
-  validateMessageContent,
-  validateImageFile,
-  truncateMessage,
-  canDeleteMessage,
-} from '../utils';
-
-// Error handling helper - unique to services
-export const handleMessageError = (error: any): string => {
-  if (error.response?.data?.message) {
-    return error.response.data.message;
-  }
-  
-  if (error.message) {
-    return error.message;
-  }
-  
-  return 'An unexpected error occurred';
-};
+// Re-export socket service
+export { SocketService } from './socket.service';
+import { SocketService } from './socket.service';
+export const socketService = new SocketService();
